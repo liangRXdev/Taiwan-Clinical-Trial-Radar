@@ -2,16 +2,20 @@
 
 台灣藥品臨床試驗檢索站。Python ETL（build-time）+ TypeScript 靜態前端 + GitHub Actions，部署 **Cloudflare Pages**。只用 TFDA dataset 205。
 
-**現況：Phase 1 規劃中，repo 內只有規格與文件，尚無程式碼。** 規格 `Taiwan-Clinical-Trial-Radar-spec.md` 是 2026-09-12 的 v0.1，**其中 §2／§6.6／§7.1／§7.2／§16 已被 2026-09-18 的實測推翻，改規格前先讀 TODO.md 的「規格修訂」段**。
+**現況：M0 規格已過第一輪覆審，待第二輪。repo 內只有規格與文件，尚無程式碼。**
+
+**唯一具規範效力的規格是 `.ai-review/plan.md` v0.3。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
 
 ---
 
 ## 四項已定案決策（2026-09-18，勿自行翻案）
 
-1. **只做 dataset 205**。206–209 永久不納入，spec §2 的 go/no-go gate、§7.3 的 relation 模型、`verify_linkage.py` 與寄給 TFDA 的詢問信全部取消。不要因為「資料看起來對得上」而重啟 join。
-2. **以 protocol number 收斂試驗單位**，顯示最新版＋保留版本歷史（見下節）。
+1. **只做 dataset 205**。206–209 永久不納入。不要因為「資料看起來對得上」而重啟 join。
+2. **以 identity-normalized protocol 收斂試驗單位**，同日平手不推定新舊（見下節）。
 3. **sentinel 依欄位型別分開處理**（見下節）。
 4. **Cloudflare Pages**，不用 GitHub Pages。理由：`liangrxdev.github.io` 由多個工具共用 origin，Cache Storage 不依 service worker scope 隔離，既有專案已踩過跨 repo 互刪快取。獨立 origin 從源頭避開。
+
+**沒有 `FEATURE_TRIAL_STATUS` 旗標。** 永遠關閉的旗標只是一條可被誤開的路徑。來源若新增 `執行狀態`，走規格修訂流程，不開旗標。
 
 ## 三個會咬人的地方
 
@@ -25,17 +29,31 @@
 - **`TFDA收文號` 不可當主鍵**：2,788 個重複鍵、266 筆空值、30 筆是 `移案BPA` 這種非數字字串。spec §7.2 的三段 key order 在實際資料上第 1、2 選都不成立（`protocol + applicant` 仍有 2,885 個重複鍵）。
 - 6 列 protocol 為空，各自 fallback 成獨立試驗單位（deterministic row hash），不要丟掉也不要合併。
 
-### 2. 「取最新版」有 846 組平手，必須是確定性規則
+### 2. 同日平手不准推定新舊——沒有 tie-break，只有 ambiguity
 
-以 `資料更新時間` 取最新版時，**2,821 個多列 protocol 裡有 846 組（30%）的最新日期是平手的**。日期只有 `YYYY/MM/DD` 精度，沒有時間或版號可再細分。
+以 `資料更新時間` 取最新時，**2,821 個多列 protocol 裡有 846 組（30%）最新日期平手**，而日期只有日精度、無時間、無版號。其中：
 
-**不可以靠 CSV 列序決定**——列序不是穩定契約，靠它會讓每次 build 的輸出不確定，也違反本專案不依賴列序的立場。tie-break 規則尚未定案，見 TODO.md；**在定案前不要先寫「取第一筆」的實作**，那會變成靜默的不確定行為。
+- **689 組（81%）平手列 16 欄全同** → 純重複，顯示共同值即可。
+- **157 組有實質衝突** → `納入條件` 74 組、`台灣預計受試者人數` 21 組（如 `19` vs `31`）、`臨床試驗期別` 3 組（如 `Phase Ⅱ` vs `Phase Ⅰ,Phase Ⅱ`）。
+
+**這 157 組不准挑一個版本顯示。** 卡片只顯示無衝突的共同欄位，衝突欄位顯示「同日多筆資料不一致」；詳情頁並列全部紀錄並明示「順序未知」。hash 只用於 cohort 內穩定排序，**不得宣稱時間先後**。
+
+曾經想過的「取非空欄位數最多者」實測幾乎無效（846 組只唯一決出 5 組），已棄。**也不可以靠 CSV 列序**——列序不是穩定契約。
+
+連帶：**不做方向性 diff**（`20 → 30` 的箭頭）。同日平手時沒有可靠順序，箭頭可能寫反。只標示「哪些欄位存在不同值」。
+
+### 2b. identity 正規化與搜尋正規化是兩套，不可混用
+
+- **identity**（主鍵用）：`strip → NFKC → upper`。**不做**標點移除、不做內部空白壓縮。實測對 5,882 個 protocol 零碰撞。碰撞即硬失敗 `IDENTITY_COLLISION`，不得合併。
+- **search**（查詢比對用）：`strip → NFKC → casefold → 壓縮內部空白`。
+
+混用會讓主鍵跟著查詢需求漂移。註：NFKC 會把全形數字折成半形，那是**等價**不是誤命中。
 
 ### 3. 來源沒有 `執行狀態` 欄位
 
 官方資料集頁面列了 `執行狀態`，實際 16 個欄位裡沒有。這不是抓取失敗，是來源本身就沒給。
 
-- 不得提供 Recruiting／Active 篩選，不得顯示招募中標章。`FEATURE_TRIAL_STATUS` 預設 `false`。
+- 不得提供 Recruiting／Active 篩選，不得顯示招募中標章。**filter schema、DOM 控制項、URL parser、輸出 state 四處都不能有**，中文同義詞（「收案情形」「招募」）也不行——只改名就能規避「檢查選單文字」那種測試。
 - 若未來某次 build 發現這一欄真的出現了，那是 schema 變更，走 warning report 與規格修訂，**不要順手接上去就上線**——招募狀態誤導的臨床後果高於少一個功能。
 
 ## sentinel 處理（依欄位型別，勿統一化）
@@ -64,10 +82,13 @@ spec §6.6 寫「`0` 不可自動視為 missing」，那條**只對數值欄位�
 
 ## ETL 不可退讓的行為
 
-- **fail-closed**：HTTP／ZIP／CSV 解析／schema 驗證任一失敗即以非零狀態結束，**不覆寫既有正式 JSON**。全部通過才 `os.replace` 原子替換。
-- **失敗絕不回空陣列**。抓取失敗與「官方回覆空集」必須分辨，後者才是資料。
-- 骨架直接複用 `../TFDA-drug-shortage-dashboard/scripts/fetch_fda_data.py`（sentinel 辨識、原子替換、驟降門檻、concurrency lock 都已驗證過），不要從零寫。
-- `資料更新時間` 是**來源欄位**，與本站 build time 是兩回事，manifest 必須分開存、UI 必須分開顯示。
+- **fail-closed**：任一階段失敗即以非零狀態結束，**不 commit**、正式資料整體等於舊版。
+- **發布邊界是 git commit，不是逐檔 `os.replace`。** 逐檔替換無法構成多檔的整體原子交易；Cloudflare Pages 部署的是一個 commit。全部 artifact 先寫 staging、通過整體 digest 與 referential integrity 驗證，才替換 `public/data/` 並 commit。不允許新舊混合的第三種 digest。
+- **失敗絕不回空陣列**。抓取失敗與「官方回覆空集」必須分辨。目前 205 無 sentinel 列，0 資料列一律走 `ZERO_ROWS` 硬失敗。
+- **每種失敗要有相異的 exit code**（error code 清單見 plan.md §9.5）。不可七種失敗共用一個 exit code 只靠訊息區分，測試也不可以「stderr 含某字串」當判定。
+- **`builtAt` 是「目前已發布 artifact 的建置時間」**，不是本次執行時間。比較是否需發布時**排除 `builtAt` 與 `fetchedAt`**，否則「無變動不 commit」永遠不可能成立（每次都會有 diff）。
+- 骨架可複用 `../TFDA-drug-shortage-dashboard/scripts/fetch_fda_data.py`（sentinel 辨識、驟降門檻、concurrency lock 已驗證），但**它的逐檔替換不能照搬**。
+- `資料更新時間` 是**來源欄位**，與 `builtAt` 是兩回事，manifest 分開存、UI 分開顯示且標籤不同。
 - 純邏輯抽成可 import 的函式，讓 pytest 在無網路下 mock 測試。
 
 ## 抓取環境
@@ -84,8 +105,11 @@ spec §6.6 寫「`0` 不可自動視為 missing」，那條**只對數值欄位�
 
 ## 文件慣例
 
-- `Taiwan-Clinical-Trial-Radar-spec.md` — 規格本體。**raw source 不手動修改**；修正規則一律以版本控制的 transformation + 測試實作。
-- `TODO.md` — 待辦與未定案決策。
-- `PROGRESS.md` — 進度紀錄，每個里程碑一段，附實測數字。
-- 規格改完要**再審一輪，且第二輪只審「修訂本身」**（走 `/codex-checkplan`）。規劃者與審查者不同人。
+- `.ai-review/plan.md` — **唯一 normative 規格**（v0.3）。驗收條件有可引用編號 A1–H4，`/codex-review` 的規格符合度稽核以它為基準。
+- `.ai-review/plan-review-*.md` — Codex 原始輸出，原封不動落檔。
+- `.ai-review/plan-verdict-*.md` — 逐項判定（接受／部分接受／拒絕）。
+- `Taiwan-Clinical-Trial-Radar-spec.md` — **歷史文件，無規範效力**。不要引用它做實作或驗收。
+- `TODO.md` — 待辦。`PROGRESS.md` — 進度紀錄，每個里程碑一段，附實測數字。
+- **raw source 不手動修改**；修正規則一律以版本控制的 transformation + 測試實作。
+- 規格改完要**再審一輪，且第二輪只審「修訂本身」**（走 `/codex-checkplan`）。第一輪 56 項發現裡**有 11 項是 v0.2 修訂自己造出來的洞**，這就是為什麼第二輪不能省。
 - Commit message：`type(scope): 說明`，type 為 `feat`／`fix`／`refactor`／`docs`／`chore`；資料更新用 `data: update TFDA clinical trial dataset YYYY-MM-DD`。
