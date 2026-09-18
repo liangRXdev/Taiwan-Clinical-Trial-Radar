@@ -2,7 +2,7 @@
 
 台灣藥品臨床試驗檢索站。Python ETL（build-time）+ TypeScript 靜態前端 + GitHub Actions，部署 **Cloudflare Pages**。只用 TFDA dataset 205。
 
-**現況：M0.5 結案。** A 群 fixture 補齊（73 列／45 Trial）、最小 artifact 樣本、B 群失敗注入 fixture、§9.3.6 不變量反例與 C4 mutation 全部完成，`tests/fixtures/run_all.py` **240 條斷言全綠**。那一輪撞出 GAP-8～GAP-12，**已全部併入 v0.6**（fixture 同步收斂，`run_all.py` 244 條斷言全綠）。下一步是只審這五項與其修訂的限縮覆審，判定後進 M1。不跑第四輪 prose 覆審。
+**現況：M0.5 結案。** A 群 fixture 補齊（73 列／45 Trial）、最小 artifact 樣本、B 群失敗注入 fixture、§9.3.6 不變量反例與 C4 mutation 全部完成，那一輪撞出 GAP-8～GAP-12，**已全部併入 v0.6**（fixture 同步收斂，`tests/fixtures/run_all.py` **244 條斷言全綠**）。下一步是只審這五項與其修訂的限縮覆審，判定後進 M1。不跑第四輪 prose 覆審。
 
 **唯一具規範效力的規格是 `.ai-review/plan.md` v0.6，動工時直接依 §14 的 13 項契約表實作，不要重新推導。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2–v0.5 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
 

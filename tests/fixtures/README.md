@@ -14,7 +14,7 @@ fixture 資料本身的性質，不計算 Trial 模型。唯一的例外是 `art
 | `b_failures/` | B1／B2／B3／B4／B5 | 12 個輸入 | §9.5 每個 error code 的注入 |
 | `artifact_sample/` | **B6／B8**、C1／C3／C4 | 8 Trial | 最小合規 artifact 樣本 ＋ 反例 |
 
-`run_all.py` 一次跑完五支自檢（目前 240 條斷言）。
+`run_all.py` 一次跑完五支自檢（目前 **244 條斷言**）。
 
 A8（ID 截短碰撞）**沒有 fixture**：真實的 64 位元 SHA-256 碰撞需約 `2^32` 次雜湊，
 不適合放進單元測試。改以注入的雜湊替身驅動，詳見 `.ai-review/fixture-findings-a.md` 的 GAP-6。

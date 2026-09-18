@@ -2,7 +2,7 @@
 
 > **這是唯一具規範效力的規格。** `Taiwan-Clinical-Trial-Radar-spec.md` v0.1 與本檔 v0.2–v0.4 均降為歷史文件，**不再具 normative 效力**。
 > 依據：2026-09-18 dataset 205 實測 ＋ Codex 三輪覆審（`plan-review-r1/r2/r3.md`、`plan-verdict-r1/r2/r3.md`）＋ A 群 fixture 反驗（`fixture-findings-a.md`）。
-> 狀態：**13 項動工前契約已封存。** M0.5 已完成——A 群 fixture 補齊、最小 artifact 樣本產出、B 群失敗注入與 §9.3.6／C4 反例齊備（`tests/fixtures/run_all.py` 240 條斷言）。那一輪撞出 GAP-8～GAP-12，已併入本版。
+> 狀態：**13 項動工前契約已封存。** M0.5 已完成——A 群 fixture 補齊、最小 artifact 樣本產出、B 群失敗注入與 §9.3.6／C4 反例齊備（`tests/fixtures/run_all.py` **244 條斷言**）。那一輪撞出 GAP-8～GAP-12，已併入本版。
 
 ---
 
@@ -884,7 +884,7 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 ## 12. 里程碑
 
 - **M0 完成**：規格通過三輪覆審 ＋ A 群 fixture 反驗；動工前契約封存（見 §14）
-- **M0.5 完成**：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（8 Trial／12 個非 manifest 檔）、B 群失敗注入（12 個輸入）、§9.3.6 不變量反例（11 種）、C4 的三個 mutation。共 240 條斷言。**取代了第四輪 prose 覆審，並撞出 GAP-8～GAP-12（本版 v0.6 已併入）。**
+- **M0.5 完成**：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（8 Trial／12 個非 manifest 檔）、B 群失敗注入（12 個輸入）、§9.3.6 不變量反例（11 種）、C4 的三個 mutation。M0.5 結案時 240 條斷言，v0.6 收斂後 **244 條**。**取代了第四輪 prose 覆審，並撞出 GAP-8～GAP-12（本版 v0.6 已併入）。**
 - **M1** repo 鷹架與 ETL（A／B／C 驗收）
 - **M2** 前端 MVP（D／E／F／G 驗收）
 - **M3** CI 與月更新（H 驗收）＋ Cloudflare Pages 首次部署

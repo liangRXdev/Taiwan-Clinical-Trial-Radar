@@ -2,7 +2,7 @@
 
 狀態：**M0.5 結案，規格已改寫為 v0.6，待限縮覆審。** 規格本體是 `.ai-review/plan.md` **v0.6**，驗收編號 A1–H5，動工前契約 13 項（§14）。
 
-四項全部完成：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（B8）、B 群失敗注入 fixture、§9.3.6 不變量反例（B6）與 C4 的三個 mutation。`tests/fixtures/run_all.py` **240 條斷言全綠**。
+四項全部完成：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（B8）、B 群失敗注入 fixture、§9.3.6 不變量反例（B6）與 C4 的三個 mutation。`tests/fixtures/run_all.py` **244 條斷言全綠**（v0.6 收斂後）。
 
 本輪反驗出 **GAP-8（High）／GAP-9／GAP-10／GAP-11（Medium）／GAP-12（Low）**，全部 open，見 `.ai-review/fixture-findings-m05.md`。
 
@@ -59,7 +59,7 @@
 - [x] §9.3.6 每條不變量的反例（`check_b6.py`）：11 種缺陷，每個斷言**違規集合 exactly equals 預期**，另加「未變造樣本零違規」的反向哨兵
 - [x] C4 的三個獨立 mutation（`check_c4.py`）：各自斷言「只有目標那組斷言轉紅」
 
-全部自檢：`python tests/fixtures/run_all.py`，**240 條斷言全綠**。
+全部自檢：`python tests/fixtures/run_all.py`（M0.5 結案時 240 條，v0.6 收斂後 **244 條**，全綠）。
 
 ### 本輪反驗出的 5 個洞（已全部併入 v0.6，待覆審）
 

@@ -407,7 +407,7 @@ B 群 fixture、§9.3.6 不變量反例、C4 mutation。
 
 ### 同日續：M0.5 後半，B 群 fixture ＋ 不變量反例 ＋ C4 mutation
 
-M0.5 四項全部完成。`tests/fixtures/run_all.py`：**240 條斷言全綠**。
+M0.5 四項全部完成。`tests/fixtures/run_all.py`：**240 條斷言全綠**（其後 v0.6 收斂為 244 條）。
 
 | 自檢 | 斷言數 |
 |---|---:|
