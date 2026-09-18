@@ -67,6 +67,61 @@ SAMPLE = {
         "rawVariantFields": [],
         "_why": "衝突欄位須在 displayFields 中**完全省略**（§6.4.5），樣本要證明 schema 容得下這個形狀",
     },
+    # IND-005 與 NR-028 的 trialId 恰好落在**同一個 shard（c4）**。
+    # B6 的「record 被兩個 Trial 引用」若跨 shard，會同時違反 shard 歸屬不變量而無法隔離；
+    # 同 shard 的一對是做出**單一違規**反例的必要條件。
+    "IND-005": {
+        "rowKeys": ["ind005-a", "ind005-b"],
+        "latestSourceDate": "2026-06-01",
+        "latestCohortRowKeys": ["ind005-a", "ind005-b"],
+        "latestAmbiguous": True,
+        "conflictFields": ["適應症中文"],
+        "rawVariantFields": [],
+        "_why": "與 NR-028 同 shard（c4）；兼 numericMissing（全球預計受試者人數為空）",
+    },
+    "NR-028": {
+        "rowKeys": ["nr028-approx"],
+        "latestSourceDate": "2026-03-29",
+        "latestCohortRowKeys": ["nr028-approx"],
+        "latestAmbiguous": False,
+        "conflictFields": [],
+        "rawVariantFields": [],
+        "_why": "與 IND-005 同 shard（c4）；兼 numericUnparsed（約400／至少480，typed 須為 null）",
+    },
+    # C1／C4：兩個分類欄位的 "0" sentinel 都在這一列上
+    "未列編號": {
+        "rowKeys": ["nonid-real"],
+        "latestSourceDate": "2026-01-03",
+        "latestCohortRowKeys": ["nonid-real"],
+        "latestAmbiguous": False,
+        "conflictFields": [],
+        "rawVariantFields": [],
+        "protocolNonIdentifier": True,
+        "_why": "C1 要求兩個分類欄位**各自**通過五處斷言；C4 的前兩個 mutation 也打在這裡",
+    },
+    # C3／C4：N/A、NA、空 三型文字 sentinel 互相可區分
+    "TXT-021A": {
+        "rowKeys": ["txt021-na1"], "latestSourceDate": "2026-03-11",
+        "latestCohortRowKeys": ["txt021-na1"], "latestAmbiguous": False,
+        "conflictFields": [], "rawVariantFields": [], "_why": "排除條件 = N/A",
+    },
+    "TXT-021B": {
+        "rowKeys": ["txt021-na2"], "latestSourceDate": "2026-03-12",
+        "latestCohortRowKeys": ["txt021-na2"], "latestAmbiguous": False,
+        "conflictFields": [], "rawVariantFields": [], "_why": "排除條件 = NA",
+    },
+    "TXT-021C": {
+        "rowKeys": ["txt021-empty"], "latestSourceDate": "2026-03-13",
+        "latestCohortRowKeys": ["txt021-empty"], "latestAmbiguous": False,
+        "conflictFields": [], "rawVariantFields": [], "_why": "排除條件 = 空字串",
+    },
+}
+
+# §6.6.1 的合法值（樣本的 typed 判定用；完整規則在 §6.6，由 M1 實作）
+LEGAL_CATEGORICAL = {
+    "臨床試驗期別": {"Phase Ⅰ", "Phase Ⅱ", "Phase Ⅲ", "Phase Ⅳ",
+                     "Phase Ⅰ,Phase Ⅱ", "Phase Ⅱ,Phase Ⅲ", "其他"},
+    "本臨床試驗規模": {"多國多中心", "台灣單中心", "台灣多中心"},
 }
 
 
@@ -133,18 +188,31 @@ def typed_and_flags(field, raw):
         m = re.fullmatch(r"(\d{4})/(\d{2})/(\d{2})", raw)
         return (f"{m.group(1)}-{m.group(2)}-{m.group(3)}", []) if m else (None, [])
     if field in ("全球預計受試者人數", "台灣預計受試者人數"):
+        if raw == "":
+            return None, ["numericMissing"]
         if re.fullmatch(r"\d+", raw):
             n = int(raw)
             return n, (["sourceZero"] if n == 0 else [])
         return None, ["numericUnparsed"]
+    if field in LEGAL_CATEGORICAL:
+        # §6.6.1：`"0"` 是 sentinel，typed 為 null 但 **raw 必須保留**
+        if raw.strip() == "0":
+            return None, ["categoricalUnprovided"]
+        if raw in LEGAL_CATEGORICAL[field]:
+            return raw, []
+        return None, ["categoricalUnknown"]
     return (raw if raw != "" else None), []
 
 
-def build(rows, overrides=None, swap=None):
+def build(rows, overrides=None, swap=None, mutate=None):
     """回傳 (logical_payloads, published_bytes, manifest)。
 
     overrides: {rowKey: {欄位: 新值}}，供 B8 的敏感度測試改一個字元。
     swap: (邏輯檔名A, 邏輯檔名B)，供 B8 證明邏輯檔名已納入 datasetVersion。
+    mutate: callable(logical) -> None，在**計算 digest 之前**改動 logical payload。
+            B6 用它產生「digest 自洽但違反 §9.3.6 不變量」的 artifact——那才是真實的威脅模型
+            （有 bug 的 ETL 會把自己算出來的錯誤 digest 一併寫進去），
+            改完位元組再放著不重算 digest 只會測到 digest 本身。
     """
     rows = {k: dict(v) for k, v in rows.items()}
     for rk, patch in (overrides or {}).items():
@@ -187,7 +255,7 @@ def build(rows, overrides=None, swap=None):
         trials.append({
             "id": tid,
             "protocolRaw": sorted({rows[rk]["臨床試驗計畫書編號"] for rk in spec["rowKeys"]}),
-            "protocolNonIdentifier": False,
+            "protocolNonIdentifier": spec.get("protocolNonIdentifier", False),
             "suspectedTestRow": False,
             "nearDuplicateGroup": None,
             "latestSourceDate": spec["latestSourceDate"],
@@ -243,16 +311,21 @@ def build(rows, overrides=None, swap=None):
         "trials-index.json": {"trials": trials},
         "stats.json": {
             "denominators": {"trials": len(trials), "records": len(search_records)},
+            # facet 名單是**手挑**的：§9.3.5 只說「僅含互斥維度」而未列名單，見 GAP-10。
+            # 這裡取 §8.4 六個維度中明確互斥的三個（enroll 已被規格排除，
+            # period 是重疊語意，updated 取決於 bucket 是否分割時間軸——後兩者規格沒說）。
             "facets": {
                 "phase": {"denominatorKind": "trials",
-                          "buckets": [{"value": "Phase Ⅲ", "count": 1}],
-                          "unprovided": 0, "conflicted": 1},
+                          "buckets": [{"value": "Phase Ⅲ", "count": 6}],
+                          "unprovided": 1, "conflicted": 1},
                 "scale": {"denominatorKind": "trials",
-                          "buckets": [{"value": "多國多中心", "count": 2}],
-                          "unprovided": 0, "conflicted": 0},
+                          "buckets": [{"value": "多國多中心", "count": 6},
+                                      {"value": "台灣多中心", "count": 1}],
+                          "unprovided": 1, "conflicted": 0},
                 "applicant": {"denominatorKind": "trials",
-                              "buckets": [{"value": "測試乙生技股份有限公司", "count": 1},
-                                          {"value": "測試甲藥廠股份有限公司", "count": 1}],
+                              "buckets": [{"value": "臺北榮民總醫院", "count": 1},
+                                          {"value": "測試乙生技股份有限公司", "count": 2},
+                                          {"value": "測試甲藥廠股份有限公司", "count": 5}],
                               "unprovided": 0, "conflicted": 0},
             },
         },
@@ -266,6 +339,9 @@ def build(rows, overrides=None, swap=None):
     if swap:
         a, b = swap
         logical[a], logical[b] = logical[b], logical[a]
+
+    if mutate:
+        mutate(logical)
 
     dv = dataset_version(logical)
 

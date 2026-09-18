@@ -124,14 +124,34 @@ def main():
         check(total == stats["denominators"]["trials"],
               f"facet {name} 的 buckets+unprovided+conflicted == denominators.trials")
 
-    print("\n[§6.4.5] 衝突欄位完全省略")
-    ph = next(t for t in index["trials"] if t["conflictFields"])
-    check(all(f not in ph["displayFields"] for f in ph["conflictFields"]),
-          f"衝突欄位 {ph['conflictFields']} 不在 displayFields 中（不是 {{typed:null}}）")
-    check(all("rawVariants" in v["flags"]
-              for t in index["trials"] for k, v in t["displayFields"].items()
-              if k in ("臨床試驗計畫中文名稱", "納入條件") and t["conflictFields"] == []),
-          "WS-003 的 rawVariants 落在**該欄位的 flags**（§6.4.3 欄位層級）")
+    print("\n[§6.4.5／§6.4.3] 衝突欄位省略與 rawVariants 的層級")
+    by_protocol = {t["protocolRaw"][0]: t for t in index["trials"]}
+    conflicting = [t for t in index["trials"] if t["conflictFields"]]
+    check(len(conflicting) == 2, f"樣本含 2 個有衝突的 Trial（實際 {len(conflicting)}）")
+    for t in conflicting:
+        check(all(f not in t["displayFields"] for f in t["conflictFields"]),
+              f"{t['protocolRaw'][0]} 的衝突欄位 {t['conflictFields']} 不在 displayFields 中"
+              f"（不是 {{typed:null}}）")
+
+    ws = by_protocol["WS-003"]
+    for field in ("臨床試驗計畫中文名稱", "納入條件"):
+        check("rawVariants" in ws["displayFields"][field]["flags"],
+              f"WS-003 的 {field} 帶 rawVariants，且落在**該欄位的 flags**（§6.4.3 欄位層級）")
+    check(not any(k.lower().startswith("rawvariant") for k in ws),
+          "Trial 層級不存在等義的 rawVariants 旗標（兩種表示並存會分歧）")
+    # 反向哨兵：沒有 raw 差異的 Trial 不得被標上 rawVariants
+    nr = by_protocol["NR-028"]
+    check(not any("rawVariants" in v["flags"] for v in nr["displayFields"].values()),
+          "NR-028（單筆 record，無 raw 變體）沒有任何欄位帶 rawVariants")
+
+    print("\n[§6.6] 樣本涵蓋的數值語意狀態")
+    ind = by_protocol["IND-005"]
+    check(ind["displayFields"]["全球預計受試者人數"]["typed"] is None
+          and "numericMissing" in ind["displayFields"]["全球預計受試者人數"]["flags"],
+          "IND-005 的空數值為 numericMissing 且 typed 為 null")
+    check(nr["displayFields"]["台灣預計受試者人數"]["typed"] is None
+          and nr["displayFields"]["台灣預計受試者人數"]["raw"] == "約400",
+          "NR-028 的 約400 typed 為 null 且 raw 原文保留（不得推論為 400）")
 
     print(f"\n{'='*60}")
     if failures:

@@ -1,10 +1,12 @@
 # TODO
 
-狀態：**M0.5 進行中。** 規格本體是 `.ai-review/plan.md` v0.5，驗收編號 A1–H5。
+狀態：**M0.5 結案。** 規格本體是 `.ai-review/plan.md` v0.5，驗收編號 A1–H5。
 
-已完成：A 群 fixture 補齊 v0.5 新案例（73 列／45 Trial）、`check_a_core.py` 改用 semantic comparison key、**最小 artifact 樣本（B8 全綠）**。本輪反驗出 **GAP-8（High）／GAP-9／GAP-10（Medium）**，見 `.ai-review/fixture-findings-m05.md`。
+四項全部完成：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（B8）、B 群失敗注入 fixture、§9.3.6 不變量反例（B6）與 C4 的三個 mutation。`tests/fixtures/run_all.py` **240 條斷言全綠**。
 
-下一步：B 群 fixture ＋ C4 mutation，然後把三個 open gap 併成 v0.6 送一輪限縮覆審。
+本輪反驗出 **GAP-8（High）／GAP-9／GAP-10／GAP-11（Medium）／GAP-12（Low）**，全部 open，見 `.ai-review/fixture-findings-m05.md`。
+
+下一步：把五個 gap 併成 v0.6 送一輪**只審這五項與其修訂**的 `/codex-checkplan`，然後進 M1。
 
 **M1 前不要寫 ETL 實作程式碼**（`artifact_sample/build_sample.py` 是 B8 的證據，不是實作，M1 不得沿用）。
 
@@ -48,21 +50,26 @@
 
 ## M0.5 — B 群 fixture ＋ 最小 artifact 樣本（取代第四輪 prose 覆審）
 
-理由：A 群的經驗是「寫 fixture 比再讀一遍 prose 更能找出問題」——它抓到 7 個洞，包含一條**數學上無法滿足**的驗收條件。十項契約已封存，現在要證明它們可實作。本輪又抓到 3 個。
+理由：A 群的經驗是「寫 fixture 比再讀一遍 prose 更能找出問題」——它抓到 7 個洞，包含一條**數學上無法滿足**的驗收條件。十項契約已封存，現在要證明它們可實作。本輪又抓到 5 個。
 
 - [x] 補 A 群 fixture 缺的 v0.5 新案例：空白-only protocol（ASCII 空白／U+3000 各一）、`buildDate` 當日與 +1 日邊界、`numericRange` 各型（嚴格範圍／`min>max`／超界／約略值不推論）、前導零、`suspectedTestRow` 的 `TEST` 值型、期間端不可解析與缺值。**50 → 73 列、29 → 45 Trial**
 - [x] `check_a_core.py` 的 [2] 分類改用 §6.4.2 的 semantic comparison key；[4] 改用 §6.6.3 的完整 lexical grammar（八類互斥、加總須等於 `列數 × 2`）
-- [x] **產出最小 artifact 樣本**（`tests/fixtures/artifact_sample/`）：7 個非 manifest 檔 ＋ `manifest.json`，**B8 四條全綠**。關鍵是 B8-1b——從已寫入版本欄位的最終檔案反算得同一個 `datasetVersion`，即循環被解開的操作型證據
-- [ ] B 群 fixture：§9.5 每個 error code 的注入、§9.3.6 每條不變量的反例、promotion 各失敗點
-- [ ] C 群的三個獨立 mutation（C4）
+- [x] **產出最小 artifact 樣本**（`tests/fixtures/artifact_sample/`）：8 個 Trial、12 個非 manifest 檔 ＋ `manifest.json`，**B8 四條全綠**。關鍵是 B8-1b——從已寫入版本欄位的最終檔案反算得同一個 `datasetVersion`，即循環被解開的操作型證據
+- [x] B 群 fixture（`tests/fixtures/b_failures/`）：12 個注入輸入涵蓋 §9.5 可用位元組表達的每個 error code；transport／publish 層列為注入點；B4 的門檻以 `(prev, cur)` 整數對驅動，不造大 CSV；B5 的 9 個 promotion 失敗點成清單
+- [x] §9.3.6 每條不變量的反例（`check_b6.py`）：11 種缺陷，每個斷言**違規集合 exactly equals 預期**，另加「未變造樣本零違規」的反向哨兵
+- [x] C4 的三個獨立 mutation（`check_c4.py`）：各自斷言「只有目標那組斷言轉紅」
 
-### 本輪反驗出的 3 個洞（全部 open，須進 v0.6）
+全部自檢：`python tests/fixtures/run_all.py`，**240 條斷言全綠**。
+
+### 本輪反驗出的 5 個洞（全部 open，須進 v0.6）
 
 | # | 嚴重度 | 章節 | 一句話 |
 |---|---|---|---|
 | GAP-8 | **High** | §6.4.2 | 比較鍵表漏了 `numericRangeInvalid`／`numericOutOfRange`／`categoricalUnknown`，同日兩列處於這些狀態時衝突與否無法從規格導出。觸發於 `CMP-035`／`CMP-036`／`CMP-037` |
 | GAP-9 | Medium | §6.6.3 | 「可表示範圍」沒有序位，與「第一個命中者決定結果」字面矛盾；單端超界的範圍值行為未定義 |
 | GAP-10 | Medium | §9.3.5／F1 | `stats.json` 的 facet 名單未封閉（E2 的 oracle 沒來源），且它在 Tier 0 卻沒計入 F1 的 1,236 KiB 基線 |
+| GAP-11 | Medium | §9.3.6 | 不變量之間有依賴（排序鍵取自 shard 內的 record）但沒有評估順序，使 B6 的「各自獨立反例」結構上做不到 |
+| GAP-12 | Low | §9.6 | 「以有理數比較」在 `prev ≤ 20,000` 的定義域內與 float 判定恆等，**測不出違反**；真正守得住的是「不四捨五入」 |
 
 展開見 `.ai-review/fixture-findings-m05.md`。**GAP-8 修訂後 `check_a_core.py` 的 [8] 段會轉紅，那是預期的**，改 oracle 時一併移除。
 

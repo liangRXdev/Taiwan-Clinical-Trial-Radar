@@ -2,16 +2,19 @@
 
 凍結測試資料與手寫 oracle。對應 `.ai-review/plan.md` v0.5 §11 的驗收編號。
 
-**這裡沒有 ETL 實作。** `build_*.py` 只把字面值寫成 CSV；`check_*.py` 只檢查 fixture
-資料本身的性質，不計算 Trial 模型。唯一的例外是 `artifact_sample/`，見下。
+**這裡沒有 ETL 實作。** `build_*.py` 只把字面值寫成 CSV 或注入輸入；`check_*.py` 只檢查
+fixture 資料本身的性質，不計算 Trial 模型。唯一的例外是 `artifact_sample/`，見下。
 
 ## 目前有什麼
 
-| 目錄 | 對應驗收 | 列數 | 用途 |
+| 目錄 | 對應驗收 | 規模 | 用途 |
 |---|---|---:|---|
-| `a_core/` | A1–A6、A9、A10（兼 C1–C3、C5 的資料面） | 73 | 正常路徑的全部 A 群案例 |
-| `a7_identity_collision/` | A7 | 5 | identity 正規化碰撞 → 硬失敗 |
-| `artifact_sample/` | **B8**（兼 §9.3.5／§9.3.6 抽查） | — | 最小合規 artifact 樣本 |
+| `a_core/` | A1–A6、A9、A10（兼 C1–C3、C5 的資料面） | 73 列 | 正常路徑的全部 A 群案例 |
+| `a7_identity_collision/` | A7 | 5 列 | identity 正規化碰撞 → 硬失敗 |
+| `b_failures/` | B1／B2／B3／B4／B5 | 12 個輸入 | §9.5 每個 error code 的注入 |
+| `artifact_sample/` | **B6／B8**、C1／C3／C4 | 8 Trial | 最小合規 artifact 樣本 ＋ 反例 |
+
+`run_all.py` 一次跑完五支自檢（目前 240 條斷言）。
 
 A8（ID 截短碰撞）**沒有 fixture**：真實的 64 位元 SHA-256 碰撞需約 `2^32` 次雜湊，
 不適合放進單元測試。改以注入的雜湊替身驅動，詳見 `.ai-review/fixture-findings-a.md` 的 GAP-6。
@@ -40,11 +43,13 @@ A8（ID 截短碰撞）**沒有 fixture**：真實的 64 位元 SHA-256 碰撞�
 ## 跑法
 
 ```bash
-python tests/fixtures/build_a_core.py            # 重新產生 a_core（73 列）
-python tests/fixtures/build_a7.py                # 重新產生 a7
-python tests/fixtures/check_a_core.py            # 自檢，exit 0 為通過
-python tests/fixtures/artifact_sample/build_sample.py   # 產出 out/ 的 artifact 樣本
-python tests/fixtures/artifact_sample/check_b8.py       # B8 驗收，exit 0 為通過
+python tests/fixtures/run_all.py                 # 全部自檢，exit 0 為通過
+
+# 個別重建（改了 build_*.py 才需要）
+python tests/fixtures/build_a_core.py                   # a_core（73 列）
+python tests/fixtures/build_a7.py                       # a7
+python tests/fixtures/b_failures/build_b_failures.py    # b_failures 的 12 個注入輸入
+python tests/fixtures/artifact_sample/build_sample.py   # artifact 樣本 → out/
 ```
 
 Windows 主控台預設 Big5，看中文輸出要加 `PYTHONIOENCODING=utf-8` 並重導向到檔案再讀。
@@ -54,18 +59,28 @@ Windows 主控台預設 Big5，看中文輸出要加 `PYTHONIOENCODING=utf-8` �
 - **不寫 `trialId`／`recordId` 的字面值**（雜湊輸出手寫不可能）。ID 只檢查格式、唯一性
   與跨排列穩定性；語意用 `rowKey` 群組表達。
 - **規格未定義之處填 `"__SPEC_GAP__"`**，並在 `specGaps`／`specGapStates` 說明，
-  不猜一個值填進去。GAP-1～GAP-7 已全部結案；目前 open 的是 **GAP-8**（§6.4.2 比較鍵表
-  漏了三個語意狀態），觸發於 `CMP-035`／`CMP-036`／`CMP-037`，展開在
-  `.ai-review/fixture-findings-m05.md`。
+  不猜一個值填進去。GAP-1～GAP-7 已全部結案；目前 open 的是 **GAP-8～GAP-12**，
+  其中 GAP-8（§6.4.2 比較鍵表漏了三個語意狀態）觸發於 `CMP-035`／`CMP-036`／`CMP-037`。
+  全部展開在 `.ai-review/fixture-findings-m05.md`。
 - **計數要數全部列，不是「為該案例設計的列」**。踩過兩次：初版把 `排除條件="N/A"` 寫成 1 筆
   （實際 3 筆）；本輪 `periodEndMissing` 差點只寫 `pd031-missing`，實際還有 `nonid-test`
   （上游測試列的期間兩端本來就是空的）。`numericStateCounts` 因此改為八類互斥且加總
   必須等於 `列數 × 2` 的形式，讓漏數直接失敗。
 
+## artifact 樣本為什麼收了 8 個 Trial
+
+每一個都是為了讓某條驗收**做得出反例**，不是為了「多一點資料」：
+
+| Trial | 在樣本裡的職責 |
+|---|---|
+| `WS-003` | `rawVariants` 的代表值規則（recordId 字典序最小者）必須真的算得出來 |
+| `PH-004` | 衝突欄位在 `displayFields` 中**完全省略**的形狀 |
+| `IND-005`／`NR-028` | **同屬 shard `c4`**——B6 的「record 被兩個 Trial 引用」若跨 shard 會連帶違反 shard 歸屬而無法隔離 |
+| `未列編號` | 兩個分類欄位的 `"0"` sentinel（C1 的五處斷言、C4 的前兩個 mutation） |
+| `TXT-021A/B/C` | `N/A`／`NA`／空 三型文字 sentinel（C3、C4 的第三個 mutation） |
+
 ## 尚未建立
 
-- B 群（ETL 失敗注入、promotion 邊界）
-- C 群的 mutation（C4 的三個獨立 mutation）
 - D／E／F／G／H 群（前端與 CI，需先有實作）
 - 長文字 fixture（E6／F3 的 22,490 字元案例與多筆分散 canary）
 - `numericRange` 單端超界的案例（等 GAP-9 定案才知道 oracle 該寫什麼）

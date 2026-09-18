@@ -1,0 +1,189 @@
+{
+ "_about": "§9.5 失敗分類的注入 oracle。對應 plan.md v0.5 §11 的 B1／B2／B3／B4／B5。",
+ "_discipline": [
+  "手寫。每個 case 寫死 error code 與 layer；**不得**以 stderr 字串判定（B2）。",
+  "exit code 不寫字面值——§9.5 只要求「每個 code 對應相異的 exit code」，沒有指定號碼。測試斷言的是『非零且兩兩相異』，寫死號碼等於自己發明規格。",
+  "transport 與 publish 層的 code 不是檔案而是注入點，列在 injectionOnly。",
+  "每個 case 都要能回答『什麼弱化實作會通過這條但功能其實是壞的』，寫在 killsWeakening。"
+ ],
+
+ "canonicalColumnCount": 16,
+
+ "fileCases": [
+  {
+   "file": "upstream_error_page.html",
+   "errorCode": "UPSTREAM_ERROR_PAGE",
+   "layer": "transport",
+   "response": {"status": 200, "contentType": "text/html; charset=utf-8"},
+   "defect": "最終狀態 200 但 MIME 非 application/zip",
+   "killsWeakening": "只看 HTTP status 的實作會把錯誤頁當成資料往下送，接著在 ZIP 層才爆——error code 會錯，且 §9.5 的 precedence 無從驗證"
+  },
+  {
+   "file": "zip_corrupt.zip",
+   "errorCode": "ZIP_CORRUPT",
+   "layer": "archive",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "壓縮資料區被翻轉兩個位元組，CRC 校驗失敗",
+   "killsWeakening": "只檢查『開得起來』而不做 CRC／完整讀取的實作會通過——本檔的 central directory 是完好的"
+  },
+  {
+   "file": "zip_no_csv.zip",
+   "errorCode": "ZIP_NO_CSV",
+   "layer": "archive",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "ZIP 內只有 readme.txt，無任何 .csv",
+   "killsWeakening": "直接取第一個成員的實作會把 readme.txt 當 CSV 解，錯誤會延後到 schema 層"
+  },
+  {
+   "file": "csv_decode.zip",
+   "errorCode": "CSV_DECODE",
+   "layer": "decode",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "CSV 位元組不是合法 UTF-8（Big5 片段 + 單獨的 0x80 續位元組）",
+   "killsWeakening": "以 errors='replace' 或 errors='ignore' 解碼的實作會靜默產出 U+FFFD 並繼續——那是最糟的一種，資料變了但沒有任何訊號"
+  },
+  {
+   "file": "source_control_char.zip",
+   "errorCode": "SOURCE_CONTROL_CHAR",
+   "layer": "decode",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "臨床試驗計畫中文名稱 欄位含 U+001F",
+   "killsWeakening": "不做此檢查的實作會讓 §6.3 的 canonical serialization 失去一對一性（分隔符可被內容偽造），identity 收斂可能把兩列併成一列。實測本快照無 U+001F 故此檢查恆不觸發——正因如此更容易被省略"
+  },
+  {
+   "file": "schema_missing.zip",
+   "errorCode": "SCHEMA_MISMATCH",
+   "layer": "schema",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "缺少 適應症中文（15 欄）",
+   "detail": {"missing": ["適應症中文"], "extra": [], "order": false},
+   "killsWeakening": "只比欄數的實作會通過 schema_order"
+  },
+  {
+   "file": "schema_extra.zip",
+   "errorCode": "SCHEMA_MISMATCH",
+   "layer": "schema",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "多出 執行狀態（17 欄）",
+   "detail": {"missing": [], "extra": ["執行狀態"], "order": false},
+   "_note": "這一欄正是官方資料集頁面有列、實際 16 欄沒有的那個。若上游哪天真的加上去，管線必須硬失敗並走規格修訂，不得自動吸收"
+  },
+  {
+   "file": "schema_order.zip",
+   "errorCode": "SCHEMA_MISMATCH",
+   "layer": "schema",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "欄名集合正確但 全球預計受試者人數 與 台灣預計受試者人數 對調",
+   "detail": {"missing": [], "extra": [], "order": true},
+   "killsWeakening": "以欄名集合（set）比對的實作會通過，而 §6.3 的 canonical serialization 依 canonical 欄位順序輸出——順序錯了 ID 全錯，且兩個數值欄位對調在數值上完全合理，不會有任何下游訊號"
+  },
+  {
+   "file": "schema_renamed.zip",
+   "errorCode": "SCHEMA_MISMATCH",
+   "layer": "schema",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "適應症中文 被改名為 適應症",
+   "detail": {"missing": ["適應症中文"], "extra": ["適應症"], "order": false},
+   "_note": "rename 同時滿足 missing 與 extra，無客觀判定方式——§9.5 已據此移除 SCHEMA_COLUMN_RENAMED 等三個分立 code，改為單一 code 攜帶 detail。本 case 存在是為了固定這個決定"
+  },
+  {
+   "file": "row_width.zip",
+   "errorCode": "ROW_WIDTH",
+   "layer": "schema",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "第 2 資料列只有 10 個欄位",
+   "killsWeakening": "以 csv.DictReader 讀取的實作會把缺的欄位補成 None 而不報錯"
+  },
+  {
+   "file": "zero_rows.zip",
+   "errorCode": "ZERO_ROWS",
+   "layer": "content",
+   "response": {"status": 200, "contentType": "application/zip"},
+   "defect": "16 欄欄名完全正確，但沒有任何資料列",
+   "mustPassSchemaFirst": true,
+   "killsWeakening": "B3 明確要求斷言『schema 已通過後才因零列失敗』——若實作在 schema 之前就用『空檔』短路，ZERO_ROWS 與 SCHEMA_MISMATCH 會分不開，而兩者的處置不同（前者是上游出事，後者是上游改格式）"
+  },
+  {
+   "file": "multi_anomaly.zip",
+   "errorCode": "UPSTREAM_ERROR_PAGE",
+   "layer": "transport",
+   "response": {"status": 200, "contentType": "text/html"},
+   "defect": "三層同時異常：MIME 非 zip（transport）＋ 內容非合法 UTF-8（decode）＋ 欄名缺一欄（schema）",
+   "precedenceExpectation": "transport 勝出，回 UPSTREAM_ERROR_PAGE",
+   "killsWeakening": "沒有 precedence 的實作會回傳『先被程式碼碰到的那一個』，而那取決於函式呼叫順序，不是規格"
+  }
+ ],
+
+ "contentTypeCases": [
+  {"value": "application/zip", "expect": "pass"},
+  {"value": "application/zip;charset=utf-8", "expect": "pass", "_why": "B1 明列須通過——帶參數是合法的"},
+  {"value": "application/zip; charset=utf-8", "expect": "pass", "_why": "; 後有空白亦須通過"},
+  {"value": "APPLICATION/ZIP", "expect": "pass", "_why": "MIME 大小寫不敏感"},
+  {"value": "text/html", "expect": "fail"},
+  {"value": "application/zip-compressed", "expect": "fail", "_why": "不得以 startswith 比對"}
+ ],
+
+ "precedence": ["transport", "archive", "decode", "schema", "content", "publish"],
+
+ "allErrorCodes": [
+  "HTTP_STATUS", "HTTP_TIMEOUT", "HTTP_TRUNCATED", "UPSTREAM_ERROR_PAGE",
+  "ZIP_CORRUPT", "ZIP_NO_CSV", "CSV_DECODE", "SOURCE_CONTROL_CHAR",
+  "SCHEMA_MISMATCH", "ROW_WIDTH", "ZERO_ROWS", "ROWCOUNT_DROP",
+  "IDENTITY_COLLISION", "ID_TRUNCATION_COLLISION", "INTEGRITY_DIGEST", "PROMOTION_FAILED"
+ ],
+
+ "injectionOnly": [
+  {"errorCode": "HTTP_STATUS", "layer": "transport", "how": "mock 最終狀態為 404／500／429 各一；須測『重導向鏈最終狀態』而非第一個回應"},
+  {"errorCode": "HTTP_TIMEOUT", "layer": "transport", "how": "mock 連線逾時與讀取逾時**各一**；兩者是不同的失敗點"},
+  {"errorCode": "HTTP_TRUNCATED", "layer": "transport", "how": "回應宣告 Content-Length 為 N 但只送 N-1 位元組；另測連線中途斷開"},
+  {"errorCode": "IDENTITY_COLLISION", "layer": "content", "how": "已有凍結 fixture：tests/fixtures/a7_identity_collision/"},
+  {"errorCode": "ID_TRUNCATION_COLLISION", "layer": "content", "how": "注入刻意截短為極少位元的雜湊替身（A8 的測試替身例外，見 fixture-findings-a.md GAP-6）"},
+  {"errorCode": "ROWCOUNT_DROP", "layer": "content", "how": "見本檔 rowcountDropCases；以 (prev, cur) 整數對驅動，不需造大 CSV"},
+  {"errorCode": "INTEGRITY_DIGEST", "layer": "publish", "how": "已有反例：tests/fixtures/artifact_sample/check_b6.py 的 11 條不變量各一"},
+  {"errorCode": "PROMOTION_FAILED", "layer": "publish", "how": "見本檔 promotionFailurePoints"}
+ ],
+
+ "rowcountDropCases": [
+  {"prev": 10000, "cur": 10000, "drop": "0", "expect": "publish", "warning": false},
+  {"prev": 10000, "cur": 9000, "drop": "1/10", "expect": "publish", "warning": false,
+   "_why": "邊界為嚴格大於，drop 恰等於 0.10 屬正常發布"},
+  {"prev": 10000, "cur": 8999, "drop": "1001/10000", "expect": "publish", "warning": true,
+   "killsWeakening": "四捨五入到兩位小數的實作會得 0.10 而判為正常，漏掉 warning"},
+  {"prev": 10000, "cur": 8000, "drop": "1/5", "expect": "publish", "warning": true,
+   "_why": "恰好 20.0% 屬 warning，不是硬失敗"},
+  {"prev": 10000, "cur": 7999, "drop": "2001/10000", "expect": "hard-fail", "warning": true,
+   "errorCode": "ROWCOUNT_DROP",
+   "killsWeakening": "四捨五入到兩位小數的實作會得 0.20 而**照樣發布**——這是本組最重要的一例"},
+  {"prev": 3, "cur": 2, "drop": "1/3", "expect": "hard-fail", "warning": true,
+   "errorCode": "ROWCOUNT_DROP", "_why": "整數列數邊界：小分母時 drop 跳得很大"},
+  {"prev": null, "cur": 18736, "drop": null, "expect": "publish", "warning": false,
+   "bootstrap": true,
+   "_why": "首次無 baseline → bootstrap 模式，不做驟降比較，manifest 記 bootstrap: true，**不假裝完成比較**"},
+  {"prev": null, "cur": 0, "drop": null, "expect": "hard-fail", "errorCode": "ZERO_ROWS",
+   "bootstrap": true,
+   "_why": "bootstrap 仍要求列數 ≥1；0 列一律走 ZERO_ROWS，不得因為『沒有 baseline 可比』而放行"}
+ ],
+
+ "_rowcountDropNote": "實測：在 prev ≤ 20,000（本資料集 18,736 列）的整個定義域內，float 與有理數比較**不存在**判定相異的 (prev, cur)。故 §9.6 的『以有理數比較』在本專案規模下**不可驗證**——B4 殺得死的是四捨五入，殺不死 float。見 fixture-findings-m05.md GAP-12。",
+
+ "promotionFailurePoints": [
+  "替換第一個 artifact 之後",
+  "替換部分 artifact 之後（中途）",
+  "替換最後一個 artifact 之後",
+  "刪除 orphan artifact 途中",
+  "git add 只含部分變更",
+  "git commit 失敗",
+  "git commit 成功但 push 失敗",
+  "push 成功但 Cloudflare Pages 部署啟用失敗",
+  "非例外式終止（SIGTERM／workflow 取消）"
+ ],
+ "_promotionNote": "每個點都斷言同一件事：**不存在部分發布的 commit**（§9.2.1）。注意 §9.2.1 明確**不聲稱** working tree 在中途失敗後等於舊版——runner 的 working tree 用後即棄、無任何讀者，去斷言它會讓測試變成在測一個規格沒承諾的性質。",
+
+ "publishedStateAssertions": [
+  "完整檔名集合不變",
+  "每個檔案的 SHA-256 不變",
+  "manifest.files 的指向不變",
+  "artifactDigest 不變",
+  "**無新增正式檔**（staging 目錄的殘留不算發布，但也不得留在 public/data/）"
+ ]
+}

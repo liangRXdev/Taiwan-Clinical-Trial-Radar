@@ -2,7 +2,7 @@
 
 台灣藥品臨床試驗檢索站。Python ETL（build-time）+ TypeScript 靜態前端 + GitHub Actions，部署 **Cloudflare Pages**。只用 TFDA dataset 205。
 
-**現況：M0.5 進行中。** A 群 fixture 已補齊 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本已產出且 **B8 四條全綠**。本輪反驗出 GAP-8（High）／GAP-9／GAP-10（Medium），**三者皆 open，須進 v0.6**。待辦是 B 群 fixture 與 C4 mutation。不跑第四輪 prose 覆審。
+**現況：M0.5 結案。** A 群 fixture 補齊（73 列／45 Trial）、最小 artifact 樣本、B 群失敗注入 fixture、§9.3.6 不變量反例與 C4 mutation 全部完成，`tests/fixtures/run_all.py` **240 條斷言全綠**。本輪反驗出 **GAP-8（High）／GAP-9／GAP-10／GAP-11（Medium）／GAP-12（Low），全部 open，須進 v0.6**。下一步是只審這五項的限縮覆審，然後進 M1。不跑第四輪 prose 覆審。
 
 **唯一具規範效力的規格是 `.ai-review/plan.md` v0.5，動工時直接依 §14 的十項契約表實作，不要重新推導。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2–v0.4 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
 
@@ -163,5 +163,9 @@ v0.1 曾寫「`0` 不可自動視為 missing」，那條**只對數值欄位成�
 - **規格審到某個程度後，改用「寫 fixture 反驗規格」比再讀一遍 prose 有效。** A 群 fixture 找到 7 個洞，包含一條（A8）**數學上無法滿足**的驗收條件。故不跑第四輪，改走 M0.5。M0.5 又找到 3 個。
 - **同一份規格裡的兩張清單要對差集。** GAP-8 是 §6.4.2 的比較鍵表（10 個語意狀態）漏了 §9.3.3 旗標封閉集合裡的三個——兩張表都在 plan.md 裡，三輪 prose 覆審都沒抓到。**prose 審查不會去對兩張表的差集，寫 fixture 會。**
 - **「兩次跑結果相同」證明的是決定性，不是無循環。** B8 另加 B8-1b：從已寫入版本欄位的最終檔案反算須得同值，那才是固定點存在的證據。同理 B8-3 要先斷言互換前後 payload hash 多重集合相同，否則證不到邏輯檔名有作用。
+- **反例要斷言「違規集合 exactly equals 預期」，不是「包含」。** 用「包含」的話，一個把所有檢查都回報違規的驗證器會全過。GAP-11（§9.3.6 的不變量有依賴卻沒有評估順序）就是被 exactly-equals 逼出來的。
+- **缺陷要注入在算 digest 之前。** 真實威脅是「有 bug 的 ETL 產出內部自洽但違規的 artifact」，它會把自己算的 digest 一併寫進去。改完最終位元組就放著不重算，測到的只是 digest 本身，referential integrity 那幾條永遠不會被執行到。
+- **驗收條件本身可能不成立。** 已踩兩種：A8「數學上無法滿足」、GAP-11「要求獨立反例但結構上做不到」、GAP-12「要求了一件測不出違反的事」。**這三種讀 prose 都讀不出來，只有真的去寫那個反例才會現形。**
+- **凍結 fixture 要配 `.gitattributes -text`。** `core.autocrlf=true` 會把 CRLF 存成 LF，Linux CI checkout 出來就變 LF——「凍結」的行尾其實沒被凍結。artifact 樣本同理（digest 對位元組計算）。
 - **Codex 沒有資料可量，量得出來的東西要自己量。** 兩輪都沒抓到「搜尋範圍 × payload 預算」的硬矛盾與 protocol 欄位的近似重複／垃圾值，那三項都是本機實測才發現的。
 - Commit message：`type(scope): 說明`，type 為 `feat`／`fix`／`refactor`／`docs`／`chore`；資料更新用 `data: update TFDA clinical trial dataset YYYY-MM-DD`。

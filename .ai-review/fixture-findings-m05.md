@@ -1,12 +1,14 @@
 # M0.5 fixture 與 artifact 樣本反驗出的規格洞
 
 日期：2026-09-18
-範圍：A 群 fixture 補 v0.5 新案例（50 → 73 列、29 → 45 Trial）＋ 最小 artifact 樣本（驗收 B8）
+範圍：M0.5 全部四項——A 群 fixture 補 v0.5 新案例（50 → 73 列、29 → 45 Trial）、最小 artifact 樣本（B8）、
+B 群失敗注入 fixture（B1／B2／B3／B4／B5）、§9.3.6 不變量反例（B6）與 C4 的三個 mutation
 規格版本：`.ai-review/plan.md` v0.5
 
 A 群第一輪的經驗是「寫 fixture 比再讀一遍 prose 更能找出問題」——它抓到 7 個洞。
-本輪延續同一作法，**改成先把 v0.5 新增的契約做出來**：把 A2 要求但尚未存在的案例補進 fixture，
-並照 §9.3.2 的文字真的產出一份合規 artifact。結果又抓到 **3 個洞**（1 High、2 Medium）。
+本輪延續同一作法，**改成先把 v0.5 新增的契約做出來**：把 A2 要求但尚未存在的案例補進 fixture、
+照 §9.3.2 的文字真的產出一份合規 artifact、再對它注入 §9.3.6 與 C4 的反例。
+結果又抓到 **5 個洞**（1 High、3 Medium、1 Low）。
 
 ---
 
@@ -17,8 +19,12 @@ A 群第一輪的經驗是「寫 fixture 比再讀一遍 prose 更能找出問�
 | GAP-8 | **High** | §6.4.2 | 比較鍵表漏了三個語意狀態，同日兩列處於這些狀態時衝突與否無法從規格導出 | `CMP-035`／`CMP-036`／`CMP-037` |
 | GAP-9 | Medium | §6.6.3 | 「可表示範圍」沒有序位，與「第一個命中者決定結果」字面矛盾 | `nr027-bounds` |
 | GAP-10 | Medium | §9.3.5／F1 | `stats.json` 的 facet 名單未封閉，且它在 Tier 0 卻沒計入 F1 的實測基線 | 產出樣本的 `stats.json` 時 |
+| GAP-11 | Medium | §9.3.6 | 不變量之間有依賴，但規格沒寫評估順序，使 B6 的「各自獨立反例」寫不出來 | B6 的「record 放錯 shard」反例 |
+| GAP-12 | Low | §9.6 | 「以有理數比較」在本資料集規模下**不可驗證**；可驗證的是「不四捨五入」 | B4 的門檻案例 |
 
-三個洞的共同形狀與第一輪相同：**規格在「主線」上寫得很細，但邊緣狀態的組合沒有被列舉過。**
+前三個洞的共同形狀與第一輪相同：**規格在「主線」上寫得很細，但邊緣狀態的組合沒有被列舉過。**
+GAP-11／GAP-12 是另一種：**驗收條件本身不成立**——一條要求「獨立反例」但結構上做不到，
+一條要求了一件在本專案規模下測不出違反的事。這兩種只有在真的去寫那個反例時才會現形。
 GAP-8 尤其明顯——§6.4.2 是 v0.5 才新增的、是三項封存契約之一，表格看起來很完整（10 列），
 但對照 §9.3.3 的旗標封閉集合就會發現少了三個。**兩份清單都在同一份規格裡，只是沒有人對過。**
 
@@ -122,6 +128,66 @@ GAP-8 尤其明顯——§6.4.2 是 v0.5 才新增的、是三項封存契約之
 
 ---
 
+## GAP-11（Medium）：§9.3.6 的不變量之間有依賴，但沒有評估順序
+
+**在哪裡**：§9.3.6 是一串平鋪的 bullet：排序 total order、referential integrity、計數一致、
+inventory、`datasetVersion`／`artifactDigest`、`schemaVersion` 升級。**沒有寫評估順序。**
+
+**問題**：`recordIds` 的排序鍵是「可採計日期降序、不可採計者置末、`recordId` 昇序」，
+而那個日期在 **shard 的 record 裡**。當 record 放錯 shard（referential integrity 違規）時，
+排序鍵**取不到**——驗證器只能把它當成「沒有日期 → 置末」，於是同時誤報排序違規。
+
+**怎麼發現的**：寫 B6 的「record 放錯 shard」反例時，實際跑出來的違規集合是
+`['I2', 'I4']` 而不是預期的 `['I4']`。
+
+**為什麼這不只是實作細節**：B6 明文要求「每一條不變量各有**獨立**反例」。
+若某個缺陷必然連帶觸發另一條，那麼**只實作其中一條檢查的驗證器也會通過測試**——
+這條驗收就變成假的。要讓反例真的獨立，驗證器必須先評估 referential integrity，
+再對通過的 Trial 才評估排序。**那是規格該指定的事，不是實作可以各自決定的。**
+
+**建議**：§9.3.6 明寫評估順序與「無法評估」的處置：
+
+1. inventory ＋ 跨檔版本綁定（沒有檔案就什麼都驗不了）
+2. referential integrity（shard 歸屬、唯一 owner、`latestCohort ⊆ recordIds`）
+3. 計數一致
+4. 排序 total order（**只對通過第 2 步的 Trial 評估**）
+5. `datasetVersion`／`artifactDigest`
+
+並規定：上游步驟失敗時，下游那條回報「無法評估」而非「違規」，
+error code 一律仍為 `INTEGRITY_DIGEST`（對外行為不變，變的是 report 的歸因）。
+
+**現況**：`check_b6.py` 已依此建議實作並在程式碼裡標注理由；11 條不變量的反例現在
+**違規集合 exactly equals 預期**，反向哨兵（未變造樣本零違規）亦成立。
+
+---
+
+## GAP-12（Low）：§9.6 的「以有理數比較」不可驗證
+
+**在哪裡**：§9.6「`drop = (prev - cur) / prev`，以有理數比較，**不四捨五入**」。
+
+**實測**：掃過 `prev ∈ [3, 20000]`（本資料集 18,736 列）在兩個門檻鄰域的全部 `cur`，
+**float 與有理數的判定沒有任何一組相異**。原因是 IEEE-754 的除法取最近可表示值，
+而 `0.10`／`0.20` 的字面量本身就是各自最近的 double——在這個定義域內兩者恆等。
+
+**後果**：B4 寫不出一個能區分「有理數實作」與「float 實作」的案例。
+規格要求了一件在本專案規模下**無法被測試發現違反**的事。
+
+**真正該守的是「不四捨五入」，而那守得住**：
+
+| prev | cur | 精確 drop | 正確判定 | 四捨五入到 2 位 |
+|---:|---:|---:|---|---|
+| 10000 | 8999 | 0.1001 | publish + **warning** | 0.10 → 無 warning ❌ |
+| 10000 | 7999 | 0.2001 | **hard-fail** | 0.20 → **照樣發布** ❌ |
+
+第二列是本組最重要的一例：四捨五入的實作會在上游掉了 20.01% 的資料時**正常發布**。
+
+**建議**：把 §9.6 的文字從「以有理數比較」改為「**不得先四捨五入或截斷到固定小數位再比較**」，
+並註記「在 `prev ≤ 20,000` 的定義域內 float 與有理數等價；若未來資料規模改變須重新評估」。
+仍可保留有理數實作（它便宜且不需要重評），但**不要在規格裡放一條測不到的要求**——
+測不到的要求會讓驗收清單看起來比實際強。
+
+---
+
 ## 本輪同時完成的事（非缺口）
 
 ### A 群 fixture 補齊 v0.5 的 A2 必含案例
@@ -152,7 +218,7 @@ GAP-8 尤其明顯——§6.4.2 是 v0.5 才新增的、是三項封存契約之
 
 ### 最小 artifact 樣本：§9.3.2 可實作、無循環
 
-`tests/fixtures/artifact_sample/` 產出 7 個非 manifest 檔案 ＋ `manifest.json`，
+`tests/fixtures/artifact_sample/` 以 8 個 Trial 產出 12 個非 manifest 檔案 ＋ `manifest.json`，
 `check_b8.py` 的 B8 四條全綠。關鍵那條是 **B8-1b**：
 
 > 從**已寫入 `datasetVersion` 的最終檔案**移除 top-level `datasetVersion` 後重算，
@@ -177,11 +243,51 @@ B7 的「除 `manifest.json` 外全部檔名帶內容雜湊」、§6.4.5 的「�
 latest cohort 內），故 `<h>` 也相同（`7f8e217cf937682e`）。兩者的發布路徑仍相異（stem 不同），
 `datasetVersion` 也因為串接納入邏輯檔名而不受影響。記下來是因為第一眼會以為是 bug。
 
+### B 群失敗注入 fixture（B1／B2／B3／B4／B5）
+
+`tests/fixtures/b_failures/` 造出 12 個有缺陷的輸入，每個都附「什麼弱化實作會通過這條」：
+
+| 缺陷 | 殺掉的弱化實作 |
+|---|---|
+| 200 但 MIME 為 text/html | 只看 HTTP status |
+| ZIP central directory 完好但 CRC 壞 | 只檢查「開得起來」 |
+| ZIP 內只有 readme.txt | 直接取第一個成員 |
+| 非法 UTF-8 位元組 | `errors='replace'`——會靜默產出 U+FFFD，資料變了但沒有訊號 |
+| 欄名集合相同、**順序**不同 | 以 set 比對欄名（而 §6.3 的 canonical serialization 依順序輸出，順序錯 ID 全錯） |
+| 某列只有 10 欄 | `csv.DictReader`（缺欄補 None 不報錯） |
+| 欄名完全正確但 0 資料列 | 在 schema 之前就用「空檔」短路（B3 明文要求 schema 先過） |
+| 三層同時異常 | 沒有 precedence，回傳「先被程式碼碰到的那一個」 |
+
+`check_b_failures.py` 驗證這些輸入**真的有**宣稱的缺陷（corrupt ZIP 真的校驗失敗、
+`zero_rows` 的 16 欄真的完全正確），並查核 oracle 自身：16 個 error code 全部有 fixture 或注入點、
+每個 case 的 layer 都在 precedence 清單內、B4 的算術與判定相符。
+
+### §9.3.6 不變量反例與 C4 mutation
+
+`check_b6.py` 對 artifact 樣本注入 11 種缺陷，每個都斷言**違規集合 exactly equals 預期**。
+兩個設計決定值得記：
+
+1. **注入點在計算 digest 之前。** 真實威脅是「有 bug 的 ETL 產出內部自洽但違反不變量的 artifact」——
+   它會把自己算出來的 digest 一併寫進去。改完最終位元組就放著不重算，測到的只是 digest 本身，
+   referential integrity 那幾條永遠不會被執行到。每個反例另斷言 `I10`／`I11` **未**觸發，證明這件事。
+2. **「record 被兩個 Trial 引用」必須挑同 shard 的一對。** 跨 shard 會連帶違反 shard 歸屬而無法隔離。
+   `IND-005` 與 `NR-028` 的 `trialId` 恰好都落在 shard `c4`，樣本為此把它們收了進來。
+
+孤兒檔那條另加一句證明：**孤兒檔不會改變 `artifactDigest`**（§9.3.2 只走 `manifest.files` 的路徑），
+所以 inventory 不變量無可取代——沒有它，`public/data/` 裡多一個沒人引用的檔案是完全靜默的。
+
+`check_c4.py` 的三個 mutation 各自斷言「只有目標那組斷言轉紅、其餘仍綠」，並加一條反向查核：
+分類 sentinel 的 typed **本來就是 null**，把它「轉成 null」當 mutation 會是測試在要求實作違反 §6.6.1
+（v0.3 的 C4 第一個 mutation 就是這個錯，第一輪覆審抓到）。
+
+**C1 的第 4／5 處斷言目前只驗到資料層**（選項清單的唯一來源是 facet buckets、
+`displayFields` 帶 `categoricalUnprovided` 供前端直接取用）。DOM 與卡片文字待 M2，`check_c4.py`
+的 docstring 明寫這個範圍限制——不假裝驗過。
+
 ---
 
 ## 下一步
 
-1. **GAP-8／GAP-9／GAP-10 進 v0.6**，跑一輪限縮的 `/codex-checkplan`（只審這三項與其修訂）。
+1. **GAP-8～GAP-12 進 v0.6**，跑一輪限縮的 `/codex-checkplan`（只審這五項與其修訂）。
    GAP-8 的修訂會使 `check_a_core.py` 的 `[8]` 段轉紅，那是預期行為。
-2. B 群 fixture：§9.5 每個 error code 的注入、§9.3.6 每條不變量的反例、promotion 各失敗點。
-3. C4 的三個獨立 mutation。
+2. M1 鷹架與 ETL。M0.5 的四項待辦已全部完成（A 群補案例、artifact 樣本、B 群 fixture、C4 mutation）。
