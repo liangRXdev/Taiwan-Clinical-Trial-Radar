@@ -1,6 +1,6 @@
 # TODO
 
-狀態：**M0 規格已過第一輪覆審，待第二輪。** 規格本體是 `.ai-review/plan.md` v0.3，驗收編號 A1–H4。
+狀態：**M0 規格已過兩輪覆審，待第三輪限縮覆審。** 規格本體是 `.ai-review/plan.md` v0.4，驗收編號 A1–H4。
 
 **M0 未結案前不要寫實作程式碼。**
 
@@ -12,22 +12,28 @@
 - [x] 第一輪 `/codex-checkplan`（`plan-review-r1.md`，56 項發現）
 - [x] 逐項判定（`plan-verdict-r1.md`，接受 51／部分接受 5／拒絕 0）
 - [x] 依判定改寫為 v0.3 單一 normative 規格，v0.1／v0.2 降為歷史文件
-- [ ] **第二輪 `/codex-checkplan`，只審 v0.2 → v0.3 的變更**。第一輪 56 項裡有 11 項是 v0.2 修訂自造的洞，第二輪不能省
-- [ ] 第二輪判定與（若需要）v0.4
+- [x] 第二輪 `/codex-checkplan`，只審 v0.2 → v0.3 的變更（`plan-review-r2.md`，54 項、**Blocker 0**）
+- [x] 第二輪判定（`plan-verdict-r2.md`，接受 53／部分接受 1／拒絕 0）；三項第一輪偏離被否決並改正
+- [x] 依判定改寫為 v0.4
+- [ ] **第三輪 `/codex-checkplan`，限縮範圍**：只審發布與快取契約（§9.2）、ID 契約（§6.3）、呈現欄位集合與衝突比較模式（§6.4）、日期模型（§6.5）、逐檔輸出 schema（§9.3）與搜尋分層（§8.5）。**不再重審全部驗收條件**——精確度到此程度後，寫 fixture 比再讀一遍 prose 更能找出問題
 
-### 兩項未定案已在 v0.3 定案
+### 已定案（原未定案項）
 
-- ~~D1 tie-break 規則~~ → 改為**不做 tie-break**。同日衝突以 `latestAmbiguous` + `conflictFields` 表達，卡片只顯示無衝突共同欄位（plan.md §6.4）。實測 846 平手組中 689 組全同、157 組真衝突。
-- ~~D2 版本歷史呈現深度~~ → 改為**不做方向性 diff**。只標示「哪些欄位存在不同值」，同日多筆明示「順序未知」（plan.md §7.3）。原本想做的「20 → 30」箭頭方向可能寫反。
+- ~~D1 tie-break 規則~~ → **不做 tie-break**。同日衝突以 `latestAmbiguous` + `conflictFields` 表達，卡片只顯示無衝突共同欄位（§6.4）。實測 846 平手組中 689 組全同、157 組 raw 有差異、其中 143 組正規化後仍衝突。
+- ~~D2 版本歷史呈現深度~~ → **不做方向性 diff**。只標示「哪些欄位存在不同值」，同日多筆明示「順序未知」（§7.3）。
+- ~~搜尋範圍~~ → **分層，預設最小**。預設 5 短欄 × 最新 cohort（約 715–900 KiB gzip），擴大控制項須在結果區可見（§8.5）。實測 v0.3 原訂的「全部歷史 × 7 欄」為 6,958 KiB，是預算的 4.6 倍。
 
 ## M1 — repo 鷹架與 ETL（驗收 A／B／C 群）
 
-**M1 前先封存這四項**（最難回頭，同時定義資料實體、歷史歸屬與外部連結）：
+**M1 前先封存這七項**（最難回頭，同時定義資料實體、歷史歸屬與外部連結）：
 
-- [ ] identity normalization 規則（plan.md §6.2）
-- [ ] 同日衝突模型（§6.4）
-- [ ] Trial／SourceRecord ID 與 canonical serialization（§6.3）
-- [ ] 輸出契約與 shard 映射（§9.3）
+- [ ] identity normalization 規則（§6.2）與近似 protocol 揭露（§6.2.1／§6.2.2）
+- [ ] canonical serialization（長度前綴）與三層 ID 碰撞偵測（§6.3）
+- [ ] 封閉的 13 欄呈現欄位集合與衝突比較模式（§6.4）
+- [ ] 日期規則與 `dateUnknown`／未來日期排除（§6.5）
+- [ ] 數值解析規則（§6.6）
+- [ ] 發布契約：內容雜湊檔名 + `datasetVersion` 綁定 + 快取策略（§9.2）
+- [ ] 逐檔輸出 schema 與整體 digest 定義（§9.3）
 
 然後：
 
@@ -36,54 +42,60 @@
 - [ ] `scripts/fetch_tfda.py` — fail-closed 下載與驗證，error code 依 §9.5，每種相異 exit code
 - [ ] `scripts/validate_schema.py` — 釘住 16 欄欄名與順序
 - [ ] `scripts/build_data.py` — identity 收斂、cohort 與 ambiguity 判定、sentinel 分型、日期規則、產出 §9.3 全部 artifact
-- [ ] 整體 digest 與 referential integrity 驗證；**發布邊界為 git commit**，不用逐檔 `os.replace`
-- [ ] `builtAt` 語意依 §9.4（比較時排除 `builtAt`／`fetchedAt`）
-- [ ] QA report：筆數、收斂前後數量、平手組與衝突組計數、nullness、sentinel 三類計數、日期異常（含 end<start）、與前次成功 build 比較
+- [ ] 整體 digest 與 referential integrity 驗證；內容雜湊檔名；`manifest.json` 為唯一固定 URL
+- [ ] promotion：替換 + `git add -A` + commit 收攏為最後三步；保證「不存在部分發布的 commit」（§9.2.1）
+- [ ] `builtAt` 語意依 §9.4（比較時排除 `builtAt`／`fetchedAt`／**`sourceSha256`**）
+- [ ] QA report（結構化，warning 不可只印 log）：筆數、收斂前後數量、平手組與衝突組計數、nullness、sentinel 三類計數、日期異常四類（含 7 列 end<start）、`nearDuplicateGroup` 全部 raw 值、`protocolNonIdentifier` 與疑似測試列、每次抓取的 `sourceSha256`、與前次成功快照比較
 
 ### 測試（fixture 驅動，不連網）
 
-- [ ] A1 fingerprint → trialId 的 group membership，含「易被過度正規化錯合併」與「應合併」案例
-- [ ] A2 fixture 每個案例附 oracle（含 ≥2 筆完全相同的空 protocol 列、≥3 組同日衝突、≥1 組同日全同）
-- [ ] A3 reverse + ≥3 seed 排列 → 檔案 inventory 相同 + 逐檔 hash 相同 + tie case 語意相同
-- [ ] A4 反向哨兵：改成「任取 cohort 第一筆」時 A3 須失敗，且證明失敗點是 `latestAmbiguous` 翻轉
-- [ ] A5 canonical fingerprint 完整 multiset 含 multiplicity
+- [ ] A1 fingerprint → trialId 的 group membership。「不應合併」反例用 §6.2 **不折疊**的差異（連字號／空格／括號閉合），**不可**用大小寫或全半形（那些會折疊，屬 A7）
+- [ ] A2 每個案例附 oracle；必含 ≥2 筆完全相同空 protocol、≥3 組同日衝突、≥1 組同日正規化後全同、**≥1 組同日僅空白／全半形差異（須判為不衝突）**、≥1 個 `nearDuplicateGroup`、≥1 筆 `protocolNonIdentifier`、**四類日期異常各 ≥1**（不可解析／空值／未來日期／end<start）
+- [ ] A3 reverse + ≥3 seed + 「重複列 × 平手 × 空 protocol」交叉 property invariant → 檔案 inventory 相同 + 逐檔 hash 相同 + tie case 語意相同
+- [ ] A4 反向哨兵：改「任取 cohort 第一筆」時須失敗於**指定 tie group 的 `latestAmbiguous` 翻轉**；oracle 須涵蓋 `displayFields`、篩選分組與統計輸出（只留旗標但把第一筆值塞進 displayFields 的實作要被殺死）
+- [ ] A5 canonical fingerprint 完整 multiset 含 multiplicity；oracle 的 row identity **獨立於 §6.3 的 serialization**（否則自我驗證）；含分隔符／長度前綴邊界 fixture
 - [ ] A6 兩筆相同空 protocol 各取得唯一 ID
-- [ ] A7 identity 碰撞 → `IDENTITY_COLLISION` 硬失敗
-- [ ] B1 §9.5 每個 error code 各一測試；斷言完整檔名集合、每檔 hash、manifest 指向不變、無新增正式檔
-- [ ] B2 structured error code + layer，不以 stderr 字串判定
+- [ ] A7 identity 碰撞 → `IDENTITY_COLLISION` 硬失敗，且 collision report 須唯一定位 group／raw 值／正規化值／fingerprint（**空 report 要使測試失敗**）
+- [ ] A8 trialId／recordId 16-hex 截短碰撞 → `ID_TRUNCATION_COLLISION`
+- [ ] A9 `nearDuplicateGroup` 偵測 18 組實測案例；`protocolNonIdentifier` 不入 group；loose key **不影響任何收斂結果**
+- [ ] B1 §9.5 每個 error code 各一測試；斷言已發布狀態未變（檔名集合、每檔 hash、`manifest.files` 指向、整體 digest）且**無新增正式檔**；content-type 測 `application/zip;charset=utf-8` 通過、`text/html` 失敗
+- [ ] B2 structured error code + layer，不以 stderr 字串判定；**多重異常 fixture 驗 precedence**（transport→archive→decode→schema→content→publish）
 - [ ] B3 schema 通過後才因零列失敗
-- [ ] B4 drop = 0.0／0.10／0.1001／0.20／0.2001／bootstrap 邊界
-- [ ] B5 四個失敗注入點都不產生 commit，正式資料整體等於舊版
-- [ ] B6 referential integrity 反例
-- [ ] C1 分類 sentinel 五處斷言
-- [ ] C2 0／非 0／空白／malformed 逐筆斷言 `sourceZero` 真值
+- [ ] B4 drop = 0.0／0.10／0.1001／**0.20**／0.2001／整數邊界／bootstrap；warning 須落在 `qa/quality-report.json` 結構化欄位（只印 log 要失敗）
+- [ ] B5 失敗注入點涵蓋**每個正式狀態變更之後**：替換第一個／部分／最後一個 artifact、刪 orphan 途中、`git add` 只含部分變更、commit 失敗、push 失敗、部署啟用失敗、**SIGTERM／取消**。每點斷言「不存在部分發布的 commit」
+- [ ] B6 referential integrity 反例各自獨立（record 被兩個 Trial 引用／同 Trial 重複引用／放錯 shard／`manifest.files` 與實際檔案集合不符／引用不存在的 recordId）
+- [ ] B7 跨版本綁定：manifest 新版 + shard 舊 `datasetVersion` → 前端 fail-closed「資料版本不一致，請重新載入」；斷言除 manifest 外全部檔名帶內容雜湊
+- [ ] C1 **兩個**分類欄位各自通過五處斷言
+- [ ] C2 依 §6.6 表格逐筆斷言 0／正整數／空／無法解析／負數的 typed value、旗標、warning 分級、UI 文字（對所有數字都設 `sourceZero` 要失敗）
 - [ ] C3 `N/A`／`NA`／`""` 精確計數與 recordId
-- [ ] C4 三個獨立 mutation 分別殺死 C1／C2／C3
-- [ ] BOM、quoted comma、embedded newline、CRLF、22,490 字元超長文字
+- [ ] C4 三個獨立且**確為違規**的 mutation：raw 值遺失／facet 保留 `"0"`／文字 sentinel 塌成同一值。**不可用「分類 typed value 轉 null」**（那是 §6.6 規定的正確行為）
+- [ ] BOM、quoted comma、embedded newline、CRLF、TAB、22,490 字元超長文字
 - [ ] 期別羅馬數字變體保留 raw
 
 ## M2 — 前端 MVP（驗收 D／E／F／G 群）
 
-- [ ] 首頁單一任務搜尋；7 個可搜尋欄位（§8.2）；search normalization（§8.1）
-- [ ] 多詞語意：record 層 AND、欄位層 OR，UI 顯示邏輯（§8.3）
-- [ ] **搜尋涵蓋全部 SourceRecord（含歷史）**，命中標籤須指出欄位與該紀錄日期；命中非最新者標示「命中來自 YYYY/MM/DD 的審查紀錄」（§7.2）
-- [ ] 篩選六維度（§8.4）；**無招募狀態維度**；衝突欄位歸入「同日多筆不一致」分組
-- [ ] 結果卡：`displayFields` + `latestAmbiguous` 標記；衝突欄位不顯示具體值
-- [ ] 詳情頁：全部 records 依日期分組、同日明示「順序未知」；長文字保留原文換行不截斷
-- [ ] 統計卡以 Trial 為分母並明寫「試驗」；衝突與 sentinel 計入「未提供／不一致」
-- [ ] URL 契約（§7.4）：`?trial=`、`?protocol=` 別名、未知 ID 的明確訊息
-- [ ] 免責三項核心性質在三個頁面可見（§10）
+- [ ] 首頁單一任務搜尋；search normalization（§8.1）與 matching operator（§8.2：空白切詞、substring、空查詢不搜尋）
+- [ ] 多詞語意：**record 層 AND、欄位層 OR**，UI 顯示邏輯（§8.3）
+- [ ] **搜尋 scope 分層**（§8.5）：預設 `fields=short`+`history=latest`；擴大控制項在結果區可見、切換前顯示大小（取自 `manifest.files[*].gzipBytes`）、scope 指示持續可見、零結果提示可擴大、載入失敗退回上一個 scope
+- [ ] 命中標示（§7.2）：欄位名 + 來源紀錄日期；非最新標「命中來自 YYYY/MM/DD」；無可採計日期標「資料日期不明」**不得偽造日期**
+- [ ] 篩選六維度（§8.4）含值域、bucket 閉區間、`period` 重疊語意；**同維度 OR、跨維度 AND**；**無招募狀態維度**
+- [ ] 結果卡：`displayFields` + `latestAmbiguous`／`dateUnknown`／`protocolNonIdentifier` 標記；衝突欄位不顯示任何候選值
+- [ ] 詳情頁：全部 records 依日期分組、同日明示「順序未知」、無日期者置末；長文字保留原文換行不截斷；`nearDuplicateGroup` 顯示近似編號提示與連結
+- [ ] 統計卡以 Trial 為分母並明寫「試驗」；`buckets + unprovided + conflicted` 須等於 `denominators.trials`
+- [ ] URL state schema（§7.4）：參數名／順序／編碼／重複參數／未知參數保留／無效值明確訊息；`?protocol=` 以 identity 正規化後比對並導向 canonical
+- [ ] 免責三項核心性質在三個頁面可見（§10），可見性綁定 G1／G2 oracle
 - [ ] 數字卡與清單為必須；**圖表可選**，依 payload 與 a11y 成本決定
-- [ ] D1–D6、E1–E7、F1–F3、G1–G4 測試
+- [ ] D1–D7、E1–E8、F1–F4、G1–G4 測試
 
 ## M3 — CI 與月更新（驗收 H 群）
 
 - [ ] `ci.yml`：lint、type-check、pytest、vitest、build、a11y smoke；每個 gate 注入已知失敗驗證會 fail；無 `continue-on-error`
 - [ ] `update-data.yml`：月排程 + `workflow_dispatch`，**schedule 與 manual 共用同一 concurrency group**、`cancel-in-progress: false`
-- [ ] baseline 一致性檢查；失去一致性時 fail-closed
+- [ ] **baseline 取樣時點為取得發布權之後**：顯式 fetch 並 checkout 預設分支最新 tip（`actions/checkout` 預設取觸發時 SHA，排隊後會是舊的）；promotion 前再驗證版本未變，不符即 fail-closed
 - [ ] 失敗時保留 last known good 並開 issue／通知
 - [ ] Actions 所有直接與間接 `uses` pin 不可變 SHA；預設 permissions 最小，只有更新 job 有 `contents: write`
-- [ ] **上線當天手動 dispatch 一次，再跑第二次驗冪等**（重用相同 source SHA，斷言兩次都完整跑完且第二次 tree 不變）
+- [ ] **上線當天手動 dispatch 一次，再跑第二次驗冪等**：第二次**重新下載並驗證 source SHA 相同**（不是快取第一次結果），斷言兩次都完整跑完 pipeline、第二次回報 no normalized change 且不產生 commit
+- [ ] H2 的真正重疊情境測試（兩 run 同時排隊、前一個發布後第二個須重取 baseline）
 - [ ] Cloudflare Pages 專案設定與首次部署
 
 ## M4 — 收尾
@@ -100,6 +112,7 @@
 - 受試者適格性判定、病歷／病況輸入。
 - 招募狀態顯示或推論。**也不保留 feature flag。**
 - 有方向性的版本 diff（`A → B` 箭頭）。
+- **自動合併近似的 protocol 寫法**（18 組已知，僅揭露不合併；人工裁決合併表列為後續版本）。
 - AI 生成試驗摘要、療效比較、試驗品質評分。
 - 醫院 geocoding 與「附近正在招募」。
 - 搜尋字串 analytics。

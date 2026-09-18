@@ -2,9 +2,9 @@
 
 台灣藥品臨床試驗檢索站。Python ETL（build-time）+ TypeScript 靜態前端 + GitHub Actions，部署 **Cloudflare Pages**。只用 TFDA dataset 205。
 
-**現況：M0 規格已過第一輪覆審，待第二輪。repo 內只有規格與文件，尚無程式碼。**
+**現況：M0 規格已過兩輪覆審，待第三輪限縮覆審。repo 內只有規格與文件，尚無程式碼。**
 
-**唯一具規範效力的規格是 `.ai-review/plan.md` v0.3。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
+**唯一具規範效力的規格是 `.ai-review/plan.md` v0.4。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2／v0.3 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
 
 ---
 
@@ -49,6 +49,16 @@
 
 混用會讓主鍵跟著查詢需求漂移。註：NFKC 會把全形數字折成半形，那是**等價**不是誤命中。
 
+**代價已知且必須揭露**：不剝標點會讓 **18 組** 同一試驗的不同寫法變成兩個 Trial（`MK-3475-158` / `MK3475-158`、`9785-CL- 0123` / `9785-CL-0123`、`ROR-PH-301(APD811-301` / `...301)`、`刪_BGB-16673-303` / `BGB-16673-303` 等）。**維持不自動合併**（合併會誤配），但要靠 `nearDuplicateGroup`（剝非英數字後的 loose key，**只用於偵測絕不用於收斂**）在 QA report 與詳情頁揭露。
+
+### 2c. 搜尋範圍是分層的，預設最小
+
+v0.3 曾要求「搜尋涵蓋全部歷史 × 7 欄」，實測索引 **6,958 KiB gzip**，是 payload 預算的 4.6 倍——該要求與 F1 不可能同時成立。
+
+現行：預設 `fields=short`（5 短欄）＋ `history=latest`（最新 cohort），約 715–900 KiB。擴大 scope 的控制項**必須在結果區可見**、切換前顯示下載大小（取自 `manifest.files[*].gzipBytes`，**不可前端寫死**）、結果區持續顯示目前範圍。預設縮小若不可見，就是靜默漏報。
+
+實測各層 gzip：`all`+`latest` 2,044 KiB／`short`+`all` 1,649 KiB／`all`+`all` 另加 5,389 KiB。
+
 ### 3. 來源沒有 `執行狀態` 欄位
 
 官方資料集頁面列了 `執行狀態`，實際 16 個欄位裡沒有。這不是抓取失敗，是來源本身就沒給。
@@ -82,8 +92,9 @@ spec §6.6 寫「`0` 不可自動視為 missing」，那條**只對數值欄位�
 
 ## ETL 不可退讓的行為
 
-- **fail-closed**：任一階段失敗即以非零狀態結束，**不 commit**、正式資料整體等於舊版。
-- **發布邊界是 git commit，不是逐檔 `os.replace`。** 逐檔替換無法構成多檔的整體原子交易；Cloudflare Pages 部署的是一個 commit。全部 artifact 先寫 staging、通過整體 digest 與 referential integrity 驗證，才替換 `public/data/` 並 commit。不允許新舊混合的第三種 digest。
+- **fail-closed**：任一階段失敗即以非零狀態結束、**不 commit**。
+- **保證下在「已 commit／push 的 tree」，不是 working tree。** 逐檔替換做不到「中途失敗後 working tree 整體等於舊版」，而 commit 的原子性不回復 working tree。CI runner 的 working tree 用後即棄、無讀者，所以要保證的是「**不存在部分發布的 commit**」。全部 artifact 先寫 staging 並通過整體驗證，替換 + `git add -A` + commit 收攏為最後三步。
+- **git commit 不足以防瀏覽器跨版本混用。** 固定 URL + 快取會讓一次 session 混用舊 manifest 與新 shard → dangling reference 或顯示錯紀錄。所以：`manifest.json` 是**唯一固定 URL**（`no-cache`），其餘全部檔名帶內容雜湊（`immutable`）；每個檔案 top-level 帶 `datasetVersion`，前端載入後**斷言等於 manifest 的值**，不符即 fail-closed 顯示「資料版本不一致，請重新載入」。
 - **失敗絕不回空陣列**。抓取失敗與「官方回覆空集」必須分辨。目前 205 無 sentinel 列，0 資料列一律走 `ZERO_ROWS` 硬失敗。
 - **每種失敗要有相異的 exit code**（error code 清單見 plan.md §9.5）。不可七種失敗共用一個 exit code 只靠訊息區分，測試也不可以「stderr 含某字串」當判定。
 - **`builtAt` 是「目前已發布 artifact 的建置時間」**，不是本次執行時間。比較是否需發布時**排除 `builtAt` 與 `fetchedAt`**，否則「無變動不 commit」永遠不可能成立（每次都會有 diff）。
@@ -111,5 +122,7 @@ spec §6.6 寫「`0` 不可自動視為 missing」，那條**只對數值欄位�
 - `Taiwan-Clinical-Trial-Radar-spec.md` — **歷史文件，無規範效力**。不要引用它做實作或驗收。
 - `TODO.md` — 待辦。`PROGRESS.md` — 進度紀錄，每個里程碑一段，附實測數字。
 - **raw source 不手動修改**；修正規則一律以版本控制的 transformation + 測試實作。
-- 規格改完要**再審一輪，且第二輪只審「修訂本身」**（走 `/codex-checkplan`）。第一輪 56 項發現裡**有 11 項是 v0.2 修訂自己造出來的洞**，這就是為什麼第二輪不能省。
+- 規格改完要**再審一輪，且下一輪只審「修訂本身」**（走 `/codex-checkplan`）。第一輪 56 項裡有 11 項是 v0.2 修訂自造的洞；第二輪 54 項裡又有一批是 v0.3 修訂自造的（`latestAmbiguous` 沒有封閉欄位集合、未來日期會支配卡片、C4 第一個 mutation 是合規行為、驗收條件反過來創造 normative 規則）。**修訂會製造新洞，這是規律不是意外。**
+- 但兩輪的 Blocker 數是 2 → 0，方向已穩定，剩餘是精確度。第三輪**限縮**只審架構級變更（發布與快取契約、ID 契約、衝突判定集合與比較模式、日期模型、逐檔 schema），不再重審全部驗收條件。
+- **Codex 沒有資料可量，量得出來的東西要自己量。** 兩輪都沒抓到「搜尋範圍 × payload 預算」的硬矛盾與 protocol 欄位的近似重複／垃圾值，那三項都是本機實測才發現的。
 - Commit message：`type(scope): 說明`，type 為 `feat`／`fix`／`refactor`／`docs`／`chore`；資料更新用 `data: update TFDA clinical trial dataset YYYY-MM-DD`。
