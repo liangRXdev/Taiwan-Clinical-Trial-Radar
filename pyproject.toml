@@ -7,6 +7,10 @@ license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.32",
+    # §6.5.1／H5：buildDate 必須以 Asia/Taipei 日曆日產生。Windows 與精簡 Linux 映像
+    # 沒有系統 tz 資料庫，缺這個套件時 ZoneInfo 會拋——**那是對的**，不得軟性退回 UTC：
+    # runner 是 UTC，台灣時間 08:00 前 UTC 仍是前一天，「未來日期」判定會差一天。
+    "tzdata>=2026.1",
 ]
 
 [dependency-groups]
