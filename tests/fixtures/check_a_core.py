@@ -9,6 +9,10 @@
 這支腳本確保 oracle 指的案例在資料裡真的存在。
 
 跑法：`python tests/fixtures/check_a_core.py`
+
+註：本檔 [2] 的分類仍以「比較正規化 raw」實作，那是 v0.4 的規則。v0.5 §6.4.2 已改為
+semantic comparison key（依欄位型別與語意狀態）。兩者對本 fixture 的分類結果相同
+（NUM-022 兩種規則下都是衝突），故暫不改；待 M0.5 補 numericRange 案例時一併改為比較鍵。
 """
 import json
 import os
@@ -163,8 +167,8 @@ def main():
     if "WS-003" in ws_only_groups:
         ks = [k for k in by_proto["WS-003"]]
         diff_fields = [f for f in PRESENTATION_FIELDS if len({rows[k][f] for k in ks}) > 1]
-        notes.append(f"GAP-1 觸發確認：WS-003 正規化後不衝突，但 raw 在 {diff_fields} 上不同"
-                     f"——§6.4 的「共同 raw 值」無定義")
+        notes.append(f"GAP-1（已修）觸發確認：WS-003 比較鍵相同但 raw 在 {diff_fields} 上不同"
+                     f"——v0.5 §6.4.3 規定該欄位加 rawVariants、代表值取 recordId 字典序最小者")
 
     print(f"\n[3] §6.5 日期異常四類")
     counts = {"dateMissing": 0, "dateUnparsed": 0, "dateFuture": 0}
@@ -266,9 +270,9 @@ def main():
     pexp = oracle["qualityReportExpectations"]["protocolNonIdentifierRowCount"]
     check(len(nonid_rows) == pexp,
           f"protocolNonIdentifier 列數 {len(nonid_rows)} == oracle {pexp}（{sorted(nonid_rows)}）")
-    notes.append(f"GAP-4 觸發確認：上述 {len(nonid_rows)} 列中有 {len(empties)} 列是空 protocol，"
-                 f"其餘 {len(nonid_rows)-len(empties)} 列是非空但無英數字元。空 protocol 算不算 "
-                 f"protocolNonIdentifier 決定這個計數是 {pexp} 還是 {pexp-len(empties)}")
+    notes.append(f"GAP-4（已修）觸發確認：{len(nonid_rows)} 列中 {len(empties)} 列是空 protocol、"
+                 f"{len(nonid_rows)-len(empties)} 列是非空但無 ASCII 英數字元。"
+                 f"v0.5 §6.2.2 定案兩者皆算，故計數為 {pexp}")
 
     # loose key 為空者不得成群（§6.2.1 第 4 點）
     empty_loose = [p for p in by_proto if not loose(p)]
@@ -296,11 +300,12 @@ def main():
                 if len({typed(v) for v in vals}) == 1:
                     gap5.append((p, f, sorted(vals)))
     if gap5:
-        notes.append(f"GAP-5 觸發：{gap5} —— raw 不同但 typed 相同，"
-                     f"依 §6.4 會判為衝突而把欄位從卡片抽掉（假警報）")
+        notes.append(f"GAP-5（建議被否決）觸發：{gap5} —— typed 皆 null 但語意狀態不同"
+                     f"（numericMissing vs numericImplausible）。v0.5 §6.4.2 的 semantic comparison key "
+                     f"使其**維持衝突**；原提議「typed 皆 null 即不衝突」會隱藏異常，比假警報更糟")
     else:
-        notes.append("GAP-5 在本 fixture 未被觸發：需補一組「同日兩列、同一數值欄位 raw 不同"
-                     "但 typed 皆為 null」的案例才能驗到（例如一列 \"\" 一列 \"-5\"）")
+        notes.append("GAP-5 的案例不在本 fixture 中：需一組「同日兩列、同一數值欄位 raw 不同"
+                     "但 typed 皆為 null」的案例（例如一列 \"\" 一列 \"-5\"）")
 
     print()
     for n in notes:

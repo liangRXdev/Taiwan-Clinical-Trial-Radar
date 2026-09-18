@@ -1,6 +1,8 @@
 # TODO
 
-狀態：**M0 規格已過兩輪覆審，待第三輪限縮覆審。** 規格本體是 `.ai-review/plan.md` v0.4，驗收編號 A1–H4。
+狀態：**M0 結案——規格已過三輪覆審，十項動工前契約已封存。** 規格本體是 `.ai-review/plan.md` v0.5，驗收編號 A1–H5。
+
+下一步是 **M0.5**：B 群 fixture ＋ 產出最小 artifact 樣本，實證契約可實作。**這取代第四輪 prose 覆審。**
 
 **M0 未結案前不要寫實作程式碼。**
 
@@ -16,20 +18,25 @@
 - [x] 第二輪判定（`plan-verdict-r2.md`，接受 53／部分接受 1／拒絕 0）；三項第一輪偏離被否決並改正
 - [x] 依判定改寫為 v0.4
 - [x] 先寫 A 群 fixture 反驗規格（`tests/fixtures/`，50 列／29 Trial ＋ A7 碰撞 fixture；`check_a_core.py` 全綠）。找到 **7 個規格洞**，見 `.ai-review/fixture-findings-a.md`
-- [ ] **第三輪 `/codex-checkplan`，限縮範圍**：只審發布與快取契約（§9.2）、ID 契約（§6.3）、呈現欄位集合與衝突比較模式（§6.4）、日期模型（§6.5）、逐檔輸出 schema（§9.3）、搜尋分層（§8.5），**並一併送審 fixture 找到的 7 個洞**——它們全落在同一範圍，分兩次審會讓 §6.4 被改兩輪
-- [ ] 依第三輪判定產出 v0.5
+- [x] 第三輪 `/codex-checkplan` 限縮範圍，並一併送審 fixture 的 7 個洞（`plan-review-r3.md`：7 洞判定 6 成立 1 不成立，另 1 Blocker、3 High、4 Medium）
+- [x] 第三輪判定（`plan-verdict-r3.md`，接受 12／不成立 1／拒絕 0）
+- [x] 依判定產出 **v0.5**，十項契約封存（見 plan.md §14）
 
-### A 群 fixture 反驗出的 7 個規格洞（待第三輪一併處理）
+### A 群 fixture 反驗出的 7 個洞——全部結案
 
-| # | 嚴重度 | 問題 |
+| # | 處置 | v0.5 章節 |
 |---|---|---|
-| GAP-1 | High | §6.4 的 `displayFields` 在「正規化後相同、raw 不同」時無定義（實測母體 14 組） |
-| GAP-3 | High | `displayFields` 存 raw／typed／三元組未定義，前端得重做一次 sentinel 判定 |
-| GAP-6 | High | **A8 無法以凍結 fixture 滿足**——64 位元雜湊碰撞需約 `2^32` 次運算 |
-| GAP-2 | Medium | 單一空 protocol 列是否帶 `#0` 後綴未定義（影響 ID 是否隨鄰居增減而改變） |
-| GAP-4 | Medium | 空 protocol 算不算 `protocolNonIdentifier`（本 fixture 計數差 3 列） |
-| GAP-5 | Medium | 衝突比較套用於數值欄位會產生假警報（`""` vs `"-5"` 兩者 typed 皆 null 卻判衝突） |
-| GAP-7 | Medium | 「不晚於 build 當日」與凍結 fixture 相牴觸，且「剛好晚一天」的邊界無法測 |
+| GAP-1 | 已修（欄位層級 `rawVariants` ＋ `recordId` 字典序最小者為代表值） | §6.4.3 |
+| GAP-2 | 已修（ordinal 一律從 `#0` 起，**並同步套用於 `recordId`**——原只修一半） | §6.3.2 |
+| GAP-3 | 已修（`{raw,typed,flags}` 三元組；**衝突欄位完全省略**而非 `{typed:null}`） | §6.4.5 |
+| GAP-4 | 已修（空 protocol 也算；嚴重度下修 Medium→Low） | §6.2.2 |
+| GAP-5 | **建議被否決**，改用 semantic comparison key | §6.4.2 |
+| GAP-6 | 已修（A8 改注入雜湊替身；嚴重度下修 High→Medium） | §11 A8 |
+| GAP-7 | 已修（`buildDate` 可注入 ＋ `Asia/Taipei` ＋ 兩個邊界案例） | §6.5.1 |
+
+### 第三輪另抓到的 Blocker
+
+**`datasetVersion` 與整體 digest 循環定義**：v0.4 要求每個檔案內含 `datasetVersion`，而 `datasetVersion` 又等於這些檔案**最終位元組** digest 的前 16 hex → 無固定點，照文字寫不出合規 artifact。**這是我在 v0.4 修 N8 時自造的。** 已於 v0.5 §9.3.2 分離為 `datasetVersion`（logical payload）與 `artifactDigest`（最終位元組）。
 
 ### 已定案（原未定案項）
 
@@ -37,17 +44,19 @@
 - ~~D2 版本歷史呈現深度~~ → **不做方向性 diff**。只標示「哪些欄位存在不同值」，同日多筆明示「順序未知」（§7.3）。
 - ~~搜尋範圍~~ → **分層，預設最小**。預設 5 短欄 × 最新 cohort（約 715–900 KiB gzip），擴大控制項須在結果區可見（§8.5）。實測 v0.3 原訂的「全部歷史 × 7 欄」為 6,958 KiB，是預算的 4.6 倍。
 
+## M0.5 — B 群 fixture ＋ 最小 artifact 樣本（取代第四輪 prose 覆審）
+
+理由：A 群的經驗是「寫 fixture 比再讀一遍 prose 更能找出問題」——它抓到 7 個洞，包含一條**數學上無法滿足**的驗收條件。十項契約已封存，現在要證明它們可實作。
+
+- [ ] 補 A 群 fixture 缺的 v0.5 新案例：空白-only protocol、`buildDate` 當日與 +1 日邊界、`numericRange` 各型（嚴格範圍／`min>max`／超界）、`suspectedTestRow` 的 `TEST` 值型
+- [ ] `check_a_core.py` 的 [2] 分類改用 §6.4.2 的 semantic comparison key（目前仍是 v0.4 的「比正規化 raw」，對本 fixture 結果相同但規則已變）
+- [ ] **產出最小 artifact 樣本**：`manifest.json` ＋ `trials-index` ＋ 一個 shard，實證 §9.3.2 的 `datasetVersion`／`artifactDigest` 計算可實作、無循環（對應驗收 B8）
+- [ ] B 群 fixture：§9.5 每個 error code 的注入、§9.3.6 每條不變量的反例、promotion 各失敗點
+- [ ] C 群的三個獨立 mutation（C4）與 semantic comparison key 的逐型別驗證（C5）
+
 ## M1 — repo 鷹架與 ETL（驗收 A／B／C 群）
 
-**M1 前先封存這七項**（最難回頭，同時定義資料實體、歷史歸屬與外部連結）：
-
-- [ ] identity normalization 規則（§6.2）與近似 protocol 揭露（§6.2.1／§6.2.2）
-- [ ] canonical serialization（長度前綴）與三層 ID 碰撞偵測（§6.3）
-- [ ] 封閉的 13 欄呈現欄位集合與衝突比較模式（§6.4）
-- [ ] 日期規則與 `dateUnknown`／未來日期排除（§6.5）
-- [ ] 數值解析規則（§6.6）
-- [ ] 發布契約：內容雜湊檔名 + `datasetVersion` 綁定 + 快取策略（§9.2）
-- [ ] 逐檔輸出 schema 與整體 digest 定義（§9.3）
+**十項動工前契約已封存**，見 `plan.md` §14。動工時直接依該表實作，不要重新推導。
 
 然後：
 

@@ -2,13 +2,16 @@
 
 | 里程碑 | 狀態 |
 |---|---|
-| M0 規格修訂與覆審 | 兩輪覆審已過；A 群 fixture 已反驗出 7 個洞，待第三輪一併送審 |
+| M0 規格修訂與覆審 | **完成**（三輪覆審 ＋ A 群 fixture 反驗，十項契約封存） |
+| M0.5 B 群 fixture ＋ 最小 artifact 樣本 | 未開始 |
 | M1 repo 鷹架與 ETL | 未開始 |
 | M2 前端 MVP | 未開始 |
 | M3 CI 與月更新 | 未開始 |
 | M4 收尾 | 未開始 |
 
 測試：A 群 fixture 已建立（50 列／29 Trial，self-check 全綠），測試本身未寫。程式碼：尚無。部署：尚無。
+
+規格：`.ai-review/plan.md` **v0.5**，驗收編號 A1–H5，十項動工前契約見 §14。
 
 ---
 
@@ -256,3 +259,73 @@ A2 的 12 類必含案例全部到位，含 11 列的 `BIG-001`、純重複 `DUP
 ### 下一步
 
 7 個洞全部落在 M1 前須封存的範圍（§6.3／§6.4／§6.5／§6.6／§9.3／§11 A8），與第二輪要求第三輪限縮審查的範圍**完全重疊**。故建議**併入第三輪一起送審**，不要分兩次——GAP-1／GAP-3／GAP-5 都在動 `displayFields` 的形狀與衝突判定規則，分兩次會讓 §6.4 被改兩輪，重演「修訂自造新洞」。
+
+---
+
+## 2026-09-18（同日，深夜）— 第三輪限縮覆審、規格定案為 v0.5、十項契約封存
+
+### 覆審結果
+
+codex-cli 0.153.4，read-only，thread `01a0b224`。範圍限縮為 §6.2–§6.6／§8.5／§9.2／§9.3 ＋ fixture 的 7 個洞，明確排除已審過的其餘章節與驗收條件。
+
+| 判定 | 數量 |
+|---|---:|
+| 接受 | 12 |
+| **我的建議不成立** | **1（GAP-5）** |
+| 拒絕 Codex | 0 |
+
+7 個洞：**6 成立、1 不成立**；另在限縮範圍內找到 **1 Blocker、3 High、4 Medium**。Codex 在 §8.5 與 §6.4 明確寫「無」，沒有湊數。
+
+三輪的 Blocker 走勢：**2 → 0 → 1**。
+
+### 那個 Blocker 是我自己造的
+
+**`datasetVersion` 與整體 digest 循環定義。** v0.4 §9.2.2 要求每個非 manifest 檔案的 top-level 內含 `datasetVersion`；§9.3 又定義 `datasetVersion` = 這些檔案**最終位元組** digest 的前 16 hex。檔案位元組包含 `datasetVersion` → 循環，一般情況無固定點，**照文字寫不出合規 artifact**。
+
+這是我在 v0.4 修 N8（瀏覽器跨版本混用）時新造的。v0.5 §9.3.2 分離為兩個概念：`datasetVersion` 由**不含版本欄位本身的 logical payload** 計算；`artifactDigest` 待版本寫入最終檔案後對**最終位元組**計算。另封存 hash 演算法與長度、串接形式（hex 字串 ＋ 邏輯檔名）、是否納入路徑。新增驗收 B8 專門證明無循環。
+
+### GAP-5 我錯了
+
+我提議「數值與分類欄位改比 typed value，兩者皆 `null` 即不衝突」。Codex 指出這**過度收斂**：`""` 是正常的 `numericMissing`（UI 顯示「未提供」），`"-5"` 是 `numericImplausible` warning（須顯示 raw 與異常提示）——typed 皆 `null` 但語意不同。判為不衝突並任取一筆 raw 會**隱藏異常**，或把正常缺值呈現成負數 warning。
+
+我為了消除假警報，反而造了一種更糟的誤導。改採 Codex 的 **semantic comparison key**（依欄位型別與語意狀態定義比較鍵），`""` vs `"-5"` **維持衝突**。
+
+### 其他被指出而我沒想到的
+
+- **GAP-2 只修了一半**：我寫了 identity key 的 `#0`，漏了 `recordId` 的 duplicate ordinal——同一個問題。
+- **GAP-3 的關鍵補充**：衝突欄位在 `displayFields` 中要**完全省略**，不是給 `{typed:null}`——後者會與「未提供」混淆，而混淆正是本專案最怕的誤導。
+- **GAP-7 的 production 語意**：`buildDate` 須以 **`Asia/Taipei`** 日曆日產生，不得用 runner 的 UTC 日期——runner 是 UTC，台灣時間 08:00 前 UTC 還是前一天，「未來日期」判定會差一天。新增驗收 H5。
+- **「英數字元」沒有字元集合**。實測確認問題比描述更嚴重：Python 的 `"系統測試".isalnum()` 回傳 **`True`**（中文被視為字母）。naive 實作下 `系統測試` **不會**被標記為 `protocolNonIdentifier`，與 §6.2.2 意圖完全相反。我的 fixture self-check 恰好用了 ASCII regex 才沒踩到。新增 §6.0 的字元集定義與驗收 A10。
+
+### 我方實測的兩項（Codex 無資料可量）
+
+**S3：F1 的預算是我用錯誤估計值訂的。**
+
+| 方案 | trials-index gzip |
+|---|---:|
+| v0.4 現行（`recordIds` 在 index 內） | 1,535 KiB |
+| **方案 B**（`recordIds`／`latestCohort` 移入 shard） | **1,236 KiB** |
+| 再把搜尋文字拆獨立檔 | 903 + 693 = **1,596 KiB** |
+
+原基線「715–900 KiB」量的是「5,888 trial × 10 個扁平卡片欄位」，沒算 `recordIds`、`conflictFields`、`protocolRaw`、旗標與 `searchShortLatest`。卡片資料本身就 903 KiB。**而拆檔會變大不會變小**——失去跨欄位的壓縮共享。**使用者定案：採方案 B，F1 改 ≤1.5 MB。**
+
+**S4：`numericUnparsed` 是個不同質的垃圾桶，而它決定 `enroll` 篩選。**
+
+`台灣預計受試者人數` 的組成：純整數 16,858／**範圍 1,340**／約略 159／其他 179／`NA` 23／千分位與界限 4／空 173。依 v0.4，非純整數全部 → typed `null` ＋「數值格式未辨識」。但 **`20-40` 不是格式未辨識，是一個區間**——藥師篩「11–30 人」時看不到它，漏掉 7.2%。
+
+**使用者定案：只解析嚴格範圍。** `^\d+\s*[-~～〜–—]|至\s*\d+$` 且 `min ≤ max` → `{min,max}` ＋ `numericRange`，`enroll` 以區間重疊判定，卡片顯示 raw 原文。`約400` → 400 會丟掉「約」，屬推論，維持 `numericUnparsed`。實測回收：台灣 **1,347／1,705**、全球 **356／766**，且 **0 筆 min>max**。
+
+另抓到第三批上游測試資料：兩個數值欄位**各有 9 筆 `TEST`**，已併入 §6.2.2 的疑似測試列判定。
+
+### v0.5 定案
+
+十項動工前契約封存於 `plan.md` §14。新增驗收 A10、B8、B9、C5、C6、D8、H5。fixture oracle 的 7 個 `__SPEC_GAP__` 全部結案，self-check 仍全綠。
+
+### 下一步：M0.5，不跑第四輪
+
+A 群的經驗是「寫 fixture 比再讀一遍 prose 更能找出問題」。十項契約已封存，接下來要**證明它們可實作**：
+
+1. 補 A 群缺的 v0.5 新案例（空白-only protocol、`buildDate` 兩個邊界、`numericRange` 各型、`TEST` 值型）
+2. `check_a_core.py` 的分類改用 semantic comparison key
+3. **產出最小 artifact 樣本**（manifest ＋ trials-index ＋ 一個 shard），實證 §9.3.2 的 digest 計算無循環（驗收 B8）
+4. B 群 fixture：每個 error code 的注入、每條不變量的反例、promotion 各失敗點

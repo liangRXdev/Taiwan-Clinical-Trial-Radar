@@ -116,13 +116,22 @@
    "conflictFields": [],
    "displayFieldsPresent": "all13",
    "displayFieldRawValues": {
-    "臨床試驗計畫中文名稱": "__SPEC_GAP__",
-    "納入條件": "__SPEC_GAP__"
+    "臨床試驗計畫中文名稱": "__RULE_BASED__",
+    "納入條件": "__RULE_BASED__"
    },
    "nearDuplicateGroup": null,
    "protocolNonIdentifier": false,
    "_purpose": "A2 的「≥1 組同日僅空白／全半形差異，須判為不衝突」。§6.4 的正規化比較使兩列不衝突（實測母體有 14 組屬此類）",
-   "_gap": "GAP-1：不衝突但 raw 不同，§6.4 的「共同 raw 值」無定義"
+   "_gap": null,
+   "displayFieldFlags": {
+    "臨床試驗計畫中文名稱": [
+     "rawVariants"
+    ],
+    "納入條件": [
+     "rawVariants"
+    ]
+   },
+   "_resolved": "v0.5 §6.4.3：比較鍵相同但 distinct raw 數 >1 → 該**欄位**的 flags 加 rawVariants（非 Trial 層級），代表值取 latestCohort 中 recordId 字典序最小者的 raw。oracle 不寫字面值（recordId 是雜湊輸出），改斷言「代表值等於兩筆 raw 中 recordId 較小者的那一筆」且詳情頁列出**兩筆**原始值。"
   },
   {
    "label": "PH-004",
@@ -208,7 +217,8 @@
    "protocolNonIdentifier": true,
    "_purpose": "A2／A6 的「≥2 筆完全相同的空 protocol 列」。兩列必須成為兩個 Trial、各有唯一 ID、multiset 完整保留",
    "_note": "oracle 刻意不指定 empty-dup-a 對到 #0 還是 #1：兩列逐位元相同，序號分配在內容上不可區分，故只斷言「兩個相異 ID 且兩者的輸出內容相同」。A3 要求的是輸出逐位元相同，此處成立",
-   "_gap": "GAP-4：protocol 為空是否也算 protocolNonIdentifier，§6.2.2 只寫「不含任何英數字元」，空字串是其退化情形但 §6.3 已另有 H: 分支，兩節關係未寫明"
+   "_gap": null,
+   "_resolved": "v0.5 §6.2.2：looseKey 為空字串時（含 raw 空字串與空白-only）即標記 protocolNonIdentifier。空 protocol 是該規則的退化情形不是例外，故本 fixture 的 protocolNonIdentifier 列數確定為 5。"
   },
   {
    "label": "EMPTY-UNIQ",
@@ -223,8 +233,9 @@
    "conflictFields": [],
    "nearDuplicateGroup": null,
    "protocolNonIdentifier": true,
-   "identityKeyHasOrdinalSuffix": "__SPEC_GAP__",
-   "_gap": "GAP-2：單一空 protocol 列是否帶 #0 後綴未定義，而這會決定 ID 是否在未來出現重複列時改變"
+   "identityKeyHasOrdinalSuffix": "#0",
+   "_gap": null,
+   "_resolved": "v0.5 §6.3.2：ordinal 一律存在且從 #0 起，單筆也寫 #0，使 ID 形狀不隨鄰居增減而改變。同規則亦套用於 recordId。"
   },
   {
    "label": "MK-3475-158",
@@ -595,8 +606,10 @@
     "num022-neg"
    ],
    "latestCohortSize": 2,
-   "latestAmbiguous": "__SPEC_GAP__",
-   "conflictFields": "__SPEC_GAP__",
+   "latestAmbiguous": true,
+   "conflictFields": [
+    "全球預計受試者人數"
+   ],
    "numericExpectations": {
     "全球預計受試者人數__num022-empty": {
      "raw": "",
@@ -618,7 +631,11 @@
    "nearDuplicateGroup": null,
    "protocolNonIdentifier": false,
    "_purpose": "GAP-5 的證據：同日兩列唯一差異是 全球預計受試者人數 \"\" vs \"-5\"，兩者 typed 皆為 null（都是「未提供」）。依 §6.4 的「比正規化 raw」會判為衝突並把該欄位從卡片抽掉，使用者看到「同日多筆資料不一致」——但兩筆其實都只是沒有有效數值，這是假警報。",
-   "_gap": "GAP-5：latestAmbiguous 與 conflictFields 照 §6.4 現行文字應為 true／[全球預計受試者人數]，但那是錯的行為，故 oracle 不填期望值，等規格修訂。"
+   "_gap": null,
+   "displayFieldsAbsent": [
+    "全球預計受試者人數"
+   ],
+   "_resolved": "v0.5 §6.4.2 semantic comparison key：numericMissing 與 numericImplausible 是不同的語意狀態，比較鍵分別為 (\"numericMissing\",) 與 (\"numericImplausible\", conflictText(raw))，故**維持衝突**。我原本提議「typed 皆 null 即不衝突」被第三輪否決——那會隱藏 -5 這個異常，或把正常缺值呈現成負數 warning，比假警報更糟。"
   },
   {
    "label": "TXT-021A",
@@ -707,7 +724,7 @@
   "protocolNonIdentifierRowCount": 5,
   "suspectedUpstreamTestRowCount": 1,
   "nearDuplicateGroupCount": 3,
-  "_note": "計數為**實測全部 50 列**的結果，不是「為該案例設計的列數」——初版 oracle 只數了刻意設計的列，漏掉其他列的附帶出現（N/A 寫 1 實際 3、numericMissing 寫 2 實際 5），由 check_a_core.py 抓出。numericMissing/Unparsed/Implausible/sourceZero 是**欄位出現次數**（兩個數值欄位各自計），非列數。protocolNonIdentifier 的列數 5 成立與否取決於 GAP-4。"
+  "_note": "計數為**實測全部 50 列**的結果，不是「為該案例設計的列數」——初版 oracle 只數了刻意設計的列，漏掉其他列的附帶出現（N/A 寫 1 實際 3、numericMissing 寫 2 實際 5），由 check_a_core.py 抓出。numericMissing/Unparsed/Implausible/sourceZero 是**欄位出現次數**（兩個數值欄位各自計），非列數。protocolNonIdentifier 的列數確定為 5（v0.5 §6.2.2 已定案空 protocol 也算）。"
  },
  "determinism": {
   "permutations": [
@@ -750,7 +767,9 @@
    "trigger": "WS-003",
    "problem": "衝突判定用正規化值、顯示用 raw 值。當兩列正規化後相同但 raw 不同時（實測母體 14 組），「latestCohort 內無衝突呈現欄位的共同 raw 值」不存在——沒有共同 raw 值可取。",
    "consequence": "oracle 寫不出 WS-003 的 displayFields 應為哪一個字串。實作只能自行挑一個，且不同實作會挑不同的，A3 的跨排列一致性也可能因此失效。",
-   "proposedFix": "明定：正規化後相同而 raw 不同時，取 latestCohort 中 recordId 字典序最小者的 raw 值，並在該欄位加 rawVariants:true，詳情頁列出全部變體。"
+   "proposedFix": "明定：正規化後相同而 raw 不同時，取 latestCohort 中 recordId 字典序最小者的 raw 值，並在該欄位加 rawVariants:true，詳情頁列出全部變體。",
+   "resolution": "已修：v0.5 §6.4.3（欄位層級 rawVariants ＋ recordId 字典序最小者為代表值 ＋ 詳情頁保留每筆 record 對應）",
+   "status": "resolved"
   },
   {
    "id": "GAP-2",
@@ -759,7 +778,9 @@
    "trigger": "EMPTY-UNIQ vs EMPTY-DUP",
    "problem": "「若多列 content hash 相同時附加出現序號 #k」——單一列時是否帶 #0 未寫明。",
    "consequence": "若單列不帶後綴，則未來出現一筆內容相同的新列時，原本的 H:x 會變成 H:x#0，URL 失效。這與 §6.3 的「只保證對相同快照穩定」相容，但屬可避免的不穩定。",
-   "proposedFix": "一律帶序號（單列即 #0），使 ID 形狀不隨鄰居增減而改變。"
+   "proposedFix": "一律帶序號（單列即 #0），使 ID 形狀不隨鄰居增減而改變。",
+   "resolution": "已修：v0.5 §6.3.2（ordinal 一律從 #0 起，**並同步套用於 recordId**——第三輪指出我原本只修了一半）",
+   "status": "resolved"
   },
   {
    "id": "GAP-3",
@@ -768,7 +789,9 @@
    "trigger": "未列編號（分類 sentinel）",
    "problem": "displayFields 只寫「共同 raw 值」，但 §6.6 要求分類 sentinel 的 typed value 為 null、UI 顯示「未提供」。raw（\"0\"）、typed（null）、UI 文字三者不同，而 §9.3 的 schema 沒說 displayFields 帶哪一種，也沒說前端從哪裡取 typed。",
    "consequence": "C1 要求「卡片顯示未提供」，但若 displayFields 只有 raw \"0\"，前端得自己重做一次 sentinel 判定——判定邏輯會出現在兩處且可能分歧。",
-   "proposedFix": "displayFields 每個欄位存 {raw, typed, flags} 三元組，前端不重做判定；§9.3 的 schema 明寫此形狀。"
+   "proposedFix": "displayFields 每個欄位存 {raw, typed, flags} 三元組，前端不重做判定；§9.3 的 schema 明寫此形狀。",
+   "resolution": "已修：v0.5 §6.4.5（displayFields 改 {raw,typed,flags} 三元組；**衝突欄位完全省略而非 {typed:null}**，後者會與「未提供」混淆）",
+   "status": "resolved"
   },
   {
    "id": "GAP-4",
@@ -777,7 +800,9 @@
    "trigger": "EMPTY-DUP／EMPTY-UNIQ",
    "problem": "§6.2.2 說「protocol 值不含任何英數字元時標記 protocolNonIdentifier」。空字串是這條的退化情形，但 §6.3 已對空 protocol 走另一條 H: 分支。空 protocol 到底算不算 protocolNonIdentifier 未寫明。",
    "consequence": "影響統計「未提供編號」類別的分母（本 fixture 差 3 列），也影響 E8 的 UI 斷言對象。",
-   "proposedFix": "明寫空 protocol 也算 protocolNonIdentifier，兩者是同一個「來源未提供編號」概念的兩種表現；或反之明確排除並說明理由。"
+   "proposedFix": "明寫空 protocol 也算 protocolNonIdentifier，兩者是同一個「來源未提供編號」概念的兩種表現；或反之明確排除並說明理由。",
+   "resolution": "已修：v0.5 §6.2.2（空 protocol 也算；嚴重度由第三輪下修 Medium→Low）",
+   "status": "resolved"
   },
   {
    "id": "GAP-5",
@@ -786,7 +811,9 @@
    "trigger": "設計 DT-018／IND-005 時發現",
    "problem": "§6.4 規定以「NFKC + 移除全部空白」的 raw 字串判定衝突。對文字欄位合理，但對數值與分類欄位會產生假衝突：同日兩列若一列為 \"\" 一列為 \"-5\"，兩者 typed 都是 null（皆為「未提供」），raw 卻不同 → 判為衝突 → 該欄位被從卡片抽掉。",
    "consequence": "使用者看到「同日多筆資料不一致」，但實際上兩筆都只是沒有有效數值。這是假警報，且 §6.4 的目的正是要避免假警報（那 14 組空白差異就是為此排除的）。",
-   "proposedFix": "衝突判定改為分型：文字欄位比正規化 raw；數值與分類欄位比 typed value（兩者皆 null 即不衝突），但 raw 不同時加 rawVariants 標記。"
+   "proposedFix": "衝突判定改為分型：文字欄位比正規化 raw；數值與分類欄位比 typed value（兩者皆 null 即不衝突），但 raw 不同時加 rawVariants 標記。",
+   "resolution": "**建議被否決**：v0.5 §6.4.2 改用 semantic comparison key。只比 typed 會隱藏 numericImplausible 異常，比假警報更糟",
+   "status": "rejected-and-superseded"
   },
   {
    "id": "GAP-6",
@@ -795,7 +822,9 @@
    "trigger": "嘗試建構 A8 的 fixture",
    "problem": "A8 要求「注入不同 identity key 但 trialId 前 16 hex 相同的 fixture」。找出 SHA-256 的 64 位元截短碰撞需約 2^32 次雜湊運算（Pollard-rho 類方法為 O(2^32) 時間、O(1) 記憶體；生日表法另需數十 GB 記憶體）。這在單元測試的 fixture 中不實際，且產物會是一對無意義的不透明字串。",
    "consequence": "A8 目前**無法以凍結 fixture 滿足**。照原文寫下去，實作者只會跳過它或偽造一個假案例，碰撞偵測分支永遠沒有測試守著。",
-   "proposedFix": "A8 改為「以注入的雜湊函式（測試替身，刻意截短為極少位元）驅動碰撞偵測分支，斷言回傳 ID_TRUNCATION_COLLISION 且不發布」，並在規格註明此條刻意不使用凍結資料、原因是真實碰撞不可建構。同時 §11 開頭的「全部 fixture 為凍結資料」需加上這個例外。"
+   "proposedFix": "A8 改為「以注入的雜湊函式（測試替身，刻意截短為極少位元）驅動碰撞偵測分支，斷言回傳 ID_TRUNCATION_COLLISION 且不發布」，並在規格註明此條刻意不使用凍結資料、原因是真實碰撞不可建構。同時 §11 開頭的「全部 fixture 為凍結資料」需加上這個例外。",
+   "resolution": "已修：v0.5 §11 A8 改以注入的雜湊替身驅動偵測分支，並在凍結原則加上此唯一例外（嚴重度由第三輪下修 High→Medium）",
+   "status": "resolved"
   },
   {
    "id": "GAP-7",
@@ -804,7 +833,10 @@
    "trigger": "DT-017",
    "problem": "可採計日期的定義依賴 build 當日，但 fixture 必須凍結。若不注入固定的 build 當日，未來日期的判定會隨真實時間漂移；而 2099 這種極端值雖然短期安全，卻使測試無法驗證「剛好晚一天」的邊界。",
    "consequence": "未來日期的邊界（build 當日、當日+1）目前無法測試。",
-   "proposedFix": "規格明定 build 當日為可注入參數，且驗收須包含 build 當日、當日+1 兩個邊界案例（當日為可採計、當日+1 不可採計）。"
+   "proposedFix": "規格明定 build 當日為可注入參數，且驗收須包含 build 當日、當日+1 兩個邊界案例（當日為可採計、當日+1 不可採計）。",
+   "resolution": "已修：v0.5 §6.5.1（buildDate 為可注入 ISO 日期，production 以 Asia/Taipei 日曆日產生；A2 須含 buildDate 當日與 +1 日兩個邊界）",
+   "status": "resolved"
   }
- ]
+ ],
+ "_status": "7 個 gap 全部結案（6 採納、1 被否決並以更好的方案取代），見各 gap 的 resolution 欄位。v0.5 另新增 A2 的必含案例，本 fixture **尚未涵蓋**：空白-only protocol、buildDate 當日與 +1 日邊界、numericRange 各型（嚴格範圍／min>max／超界）、suspectedTestRow 的 TEST 值型。列為 M0.5 待補。"
 }
