@@ -1,12 +1,14 @@
 # TODO
 
-狀態：**M0.5 結案，規格經第四輪限縮覆審後定案為 v0.7。** 規格本體是 `.ai-review/plan.md` **v0.7**，驗收編號 A1–H5，動工前契約 **14 項**（§14）。
+狀態：**M1 進行中（ETL 主體已完成）。** 規格本體是 `.ai-review/plan.md` **v0.7**，驗收編號 A1–H5，動工前契約 **14 項**（§14）。
 
 四項全部完成：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（B8）、B 群失敗注入 fixture、§9.3.6 不變量反例（B6）與 C4 的三個 mutation。`tests/fixtures/run_all.py` **244 條斷言全綠**（v0.6 收斂後）。
 
 本輪反驗出 **GAP-8（High）／GAP-9／GAP-10／GAP-11（Medium）／GAP-12（Low）**，全部 open，見 `.ai-review/fixture-findings-m05.md`。
 
-第四輪覆審（`plan-review-r4.md`／`plan-verdict-r4.md`）**Blocker 0**，但指出 v0.6 的修訂自造 3 個 High、6 個 Medium，全部已修入 **v0.7**（接受 9／部分接受 2／拒絕 0）。fixture 同步收斂，`run_all.py` **289 條斷言全綠**。下一步：**M1**（repo 鷹架與 ETL）。
+M1 已完成 ETL 主體：`trial_radar/` 十個模組涵蓋 §6 全部規則、§9.1 取得與驗證、§9.3 輸出契約、§9.3.6 驗證器、§9.6 QA report、§9.2 promotion，＋ `scripts/build_data.py` CLI。**pytest 141 綠**（A 群 27／B 群 64／C 群 50），fixture 自檢 `run_all.py` 289 條斷言全綠。
+
+下一步：`scripts/fetch_tfda.py` 與 `validate_schema.py` 拆成獨立 CLI、首次連網實跑、然後 **M2 前端**。
 
 **M1 前不要寫 ETL 實作程式碼**（`artifact_sample/build_sample.py` 是 B8 的證據，不是實作，M1 不得沿用）。
 

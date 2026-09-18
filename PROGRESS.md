@@ -572,3 +572,60 @@ a_core 77 列／47 Trial，artifact 樣本 8 Trial／12 個非 manifest 檔。
 ### 下一步
 
 **M1：repo 鷹架與 ETL。** 動工時直接依 `plan.md` §14 的 14 項契約表實作，不要重新推導。
+
+---
+
+## 2026-09-18（同日）— M1：ETL 主體完成
+
+`trial_radar/` 十個模組，每個 docstring 標出實作的章節；**未沿用 `artifact_sample/build_sample.py`**
+（規格要能被兩份獨立的程式碼各自寫出來才算寫清楚）。結果：獨立實作與手寫 oracle 完全吻合
+——47 Trial、10 個衝突組、2 個 dateUnknown、3 個 nearDuplicateGroup，A3 跨 5 種排列輸出逐位元相同。
+
+| 測試 | 數 |
+|---|---:|
+| A 群（資料模型與收斂 A1–A10） | 27 |
+| B 群（失敗分類 B1–B4） | 27 |
+| B 群（不變量／digest B6–B9） | 27 |
+| B 群（promotion B5） | 10 |
+| C 群（sentinel C1–C6） | 50 |
+| **pytest 合計** | **141** |
+| fixture 自檢（`run_all.py`） | 289 |
+
+### fixture 抓到兩個實作缺陷
+
+**1. `zipfile.testzip()` 拋的是 `zlib.error` 不是 `BadZipFile`。** 只接 `BadZipFile` 會讓它
+逸出成 traceback 而非 structured error code——B2 明文要求不得以 stderr 字串判定，
+而一個 traceback 連 code 都沒有。
+
+**2. `資料更新時間` 的旗標從沒寫進 artifact。** `dateMissing`／`dateUnparsed`／`dateFuture`
+都在 §9.3.3 的封閉集合內，但 `artifacts.py` 只寫了呈現欄位的旗標。後果是下游光看 typed
+分不出「有日期」與「可採計」——**`dateFuture` 的 typed 是一個合法 ISO 日期卻必須置末**，
+於是 §9.3.6 驗證器對**未變造**的 artifact 就報 I5.records 違規。
+
+第 2 點是「反向哨兵先紅」的價值：那條斷言一失敗，就直接指出輸出契約漏了一整類旗標，
+而不是等 M2 做到 §7.2 的「資料日期不明」標示時才發現——那時已經要改資料契約。
+
+### 三條刻意的反向哨兵
+
+- **A4**：monkeypatch 把同日處置換成「任取 cohort 第一筆」，斷言 BIG-001 的
+  `latestAmbiguous` 由 true 變 false 且衝突欄位冒出具體值。
+- **A8**：注入只保留 1 hex 熵的雜湊替身驅動截短碰撞分支（真實 64 位元碰撞需約 2^32 次運算）。
+- **A9**：把 `near_duplicate_groups` 換成恆空，斷言收斂結果完全不變。
+
+### 兩個「規格沒承諾就不要斷言」
+
+- B5 **刻意不斷言** working tree 在中途失敗後等於舊版——§9.2.1 明確不聲稱那件事。
+- `promote()` 接 `BaseException` 不是筆誤：SIGTERM／workflow 取消以 `KeyboardInterrupt`／
+  `SystemExit` 進來，只接 `Exception` 會讓 B5 明列的那條注入點完全沒有處置。
+
+### tzdata 是硬依賴
+
+Windows 與精簡 Linux 映像沒有系統 tz 資料庫。缺套件時 `ZoneInfo("Asia/Taipei")` 會拋，
+**那是對的，不得軟性退回 UTC**：runner 是 UTC，台灣時間 08:00 前 UTC 仍是前一天，
+「未來日期」判定會差一天（H5）。
+
+### 下一步
+
+1. `scripts/fetch_tfda.py` 與 `scripts/validate_schema.py` 拆成獨立 CLI（目前都在 build_data.py 內）
+2. **首次連網實跑**：量 `stats.json` 大小與 `applicant` 的 distinct 值數，補 F1 的 Tier 0 總和
+3. M2 前端
