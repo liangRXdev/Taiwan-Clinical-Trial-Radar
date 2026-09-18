@@ -63,8 +63,17 @@ def _logical_name(path: str) -> str:
     return f"{stem}.{ext}"
 
 
+# §6.5.2 的不可採計旗標。**有 typed 日期 ≠ 可採計**——dateFuture 的 typed 是一個合法
+# ISO 日期，卻必須置末；只看 typed 的驗證器會與 §9.3.6 的排序規則不一致。
+_UNUSABLE_DATE_FLAGS = frozenset({"dateMissing", "dateUnparsed", "dateFuture"})
+
+
 def _sort_key(rid: str, records: dict) -> tuple:
-    d = records.get(rid, {}).get("typed", {}).get("資料更新時間")
+    rec = records.get(rid, {})
+    flags = set(rec.get("fieldFlags", {}).get("資料更新時間", []))
+    d = rec.get("typed", {}).get("資料更新時間")
+    if flags & _UNUSABLE_DATE_FLAGS:
+        d = None
     # 可採計日期降序、不可採計者置末
     return (d is None, "" if d is None else "".join(chr(0x10FFFD - ord(c)) for c in d), rid)
 

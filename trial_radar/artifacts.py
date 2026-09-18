@@ -183,7 +183,14 @@ def build_artifacts(
                     "TFDA收文號": r.raw["TFDA收文號"] or None,
                     "資料更新時間": r.updated.date.isoformat() if r.updated.date else None,
                 },
-                "fieldFlags": {k: list(v.flags) for k, v in r.fields.items() if v.flags},
+                # `資料更新時間` 的旗標**必須**寫進 artifact：dateMissing／dateUnparsed／
+                # dateFuture 都在 §9.3.3 的封閉集合內，而下游（§9.3.6 驗證器、§7.2 的
+                # 「資料日期不明」標示）光看 typed 分不出「有日期」與「可採計」——
+                # dateFuture 的 typed 是一個合法 ISO 日期，卻不得參與 latest 選擇。
+                "fieldFlags": {
+                    **{k: list(v.flags) for k, v in r.fields.items() if v.flags},
+                    **({"資料更新時間": [r.updated.flag]} if r.updated.flag else {}),
+                },
                 # record-level 旗標與 field-scoped **分開，不得混在同一陣列**（§9.3.3）
                 "recordFlags": list(r.record_flags),
             }
