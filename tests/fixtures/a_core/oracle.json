@@ -7,9 +7,9 @@
   "規格未定義之處一律填 \"__SPEC_GAP__\" 並在 specGaps 列出，不猜。"
  ],
  "totals": {
-  "recordCount": 73,
-  "trialCount": 45,
-  "_note": "trialCount 45 = 42 個非空 distinct protocol（identityNormalize 後） + 3 列 identityNormalize 後為空者（2 列空字串逐位元相同 → #0／#1 兩個 Trial、1 列空字串獨特、2 列空白-only 各自成 Trial）。oracle trials 陣列有 44 個條目，EMPTY-DUP 一個條目展開為 2 個 Trial。由 rowKey 群組獨立數出，不引用任何 build 輸出。A1 禁止只比總數，故 trials 另給完整 group membership。"
+  "recordCount": 77,
+  "trialCount": 47,
+  "_note": "trialCount 47 = 44 個非空 distinct protocol（identityNormalize 後） + 3 列 identityNormalize 後為空者（2 列空字串逐位元相同 → #0／#1 兩個 Trial、1 列空字串獨特、2 列空白-only 各自成 Trial）。oracle trials 陣列有 46 個條目，EMPTY-DUP 一個條目展開為 2 個 Trial。由 rowKey 群組獨立數出，不引用任何 build 輸出。A1 禁止只比總數，故 trials 另給完整 group membership。"
  },
  "trials": [
   {
@@ -1144,6 +1144,82 @@
     "全球預計受試者人數"
    ],
    "_resolved": "v0.6 §6.4.2 補上該語意狀態的比較鍵 (旗標名, conflictText(raw))，兩列 raw 不同故判為衝突，該欄位在 displayFields 中完全省略。"
+  },
+  {
+   "label": "CMP-038",
+   "identityKeySource": "P:CMP-038",
+   "rowKeys": [
+    "cmp038-a",
+    "cmp038-b"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-04-16",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "cmp038-a",
+    "cmp038-b"
+   ],
+   "latestCohortSize": 2,
+   "latestAmbiguous": true,
+   "conflictFields": [
+    "台灣預計受試者人數"
+   ],
+   "displayFieldsAbsent": [
+    "台灣預計受試者人數"
+   ],
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": false,
+   "numericExpectations": {
+    "台灣預計受試者人數__cmp038-a": {
+     "raw": "1-9007199254740992",
+     "typed": null,
+     "flags": [
+      "numericRange",
+      "numericOutOfRange"
+     ],
+     "grade": "warning",
+     "_why": "v0.7 §6.6.3 階段二：序 3 命中但單端超界 → **整個** typed 為 null，不得留 {min:1,max:null}"
+    },
+    "台灣預計受試者人數__cmp038-b": {
+     "raw": "2-9007199254740992",
+     "typed": null,
+     "flags": [
+      "numericRange",
+      "numericOutOfRange"
+     ],
+     "grade": "warning"
+    }
+   },
+   "_purpose": "v0.7 §6.4.2 第 10 列（**複合狀態** numericRange + numericOutOfRange）的衝突案例。兩列 raw 不同 → 比較鍵 (\"numericOutOfRange\", conflictText(raw)) 不同 → 衝突。**這是 Codex 第四輪 C5 指出的洞**：只驗合法 range 與 scalar 超界兩個原子狀態時，一個處理不了複合組合的實作會通過測試。",
+   "enrollBucketMembership": []
+  },
+  {
+   "label": "CMP-039",
+   "identityKeySource": "P:CMP-039",
+   "rowKeys": [
+    "cmp039-half",
+    "cmp039-full"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-04-17",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "cmp039-half",
+    "cmp039-full"
+   ],
+   "latestCohortSize": 2,
+   "latestAmbiguous": false,
+   "conflictFields": [],
+   "displayFieldsPresent": "all13",
+   "displayFieldFlags": {
+    "台灣預計受試者人數": [
+     "rawVariants"
+    ]
+   },
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": false,
+   "_purpose": "複合狀態的**不衝突**對照組：全形數字寫的同一個超界區間，NFKC 後等價 → 比較鍵相同 → 不衝突且該欄位帶 rawVariants。與 CMP-038 成對，證明複合狀態的比較鍵比的是 conflictText(raw)，不是字面。",
+   "_note": "若實作對複合組合 fallback 成「視為相等」，CMP-038 會漏判；fallback 成「比 raw 字面」，CMP-039 會誤判。兩組一起才釘得住。"
   }
  ],
  "nearDuplicateGroups": {
@@ -1193,30 +1269,30 @@
   "protocolNonIdentifierRowCount": 7,
   "suspectedUpstreamTestRowCount": 2,
   "nearDuplicateGroupCount": 3,
-  "_note": "計數為**實測全部 73 列**的結果，不是「為該案例設計的列數」。protocolNonIdentifier 7 列 = 3 列空字串 + 2 列空白-only + nonid-test + nonid-real。suspectedTestRow 2 列 = nonid-test（規則 a 與 c）+ test029（只有規則 b）。",
+  "_note": "計數為**實測全部 77 列**的結果，不是「為該案例設計的列數」。protocolNonIdentifier 7 列 = 3 列空字串 + 2 列空白-only + nonid-test + nonid-real。suspectedTestRow 2 列 = nonid-test（規則 a 與 c）+ test029（只有規則 b）。",
   "numericStateCounts": {
-   "int": 118,
+   "int": 122,
    "sourceZero": 2,
    "numericMissing": 5,
    "range": 6,
    "numericRangeInvalid": 3,
    "numericImplausible": 3,
    "numericUnparsed": 6,
-   "numericOutOfRange": 3,
-   "_note": "單位為**欄位出現次數**（73 列 × 2 個數值欄位 = 146），八類互斥且總和須為 146。int 不含值為 0 者（那些計入 sourceZero）。依 §6.6.3 的解析順序表分類。"
+   "numericOutOfRange": 7,
+   "_note": "單位為**欄位出現次數**（77 列 × 2 個數值欄位 = 154），八類互斥且總和須為 154。int 不含值為 0 者（那些計入 sourceZero）。依 §6.6.3 的兩階段分類：numericOutOfRange 同時涵蓋序 2 超界（單值）與序 3 超界（區間，flags 為 [numericRange, numericOutOfRange]）。"
   },
   "categoricalStateCounts": {
    "臨床試驗期別": {
-    "cat": 70,
+    "cat": 74,
     "categoricalUnprovided": 1,
     "categoricalUnknown": 2
    },
    "本臨床試驗規模": {
-    "cat": 72,
+    "cat": 76,
     "categoricalUnprovided": 1,
     "categoricalUnknown": 0
    },
-   "_note": "每欄三類總和須為 73。categoricalUnprovided 只有 nonid-real 一列（raw \"0\"）；categoricalUnknown 為 cmp036 的兩列（\"第三期\"／\"Phase III\"，後者用 ASCII III 而非 U+2162）。"
+   "_note": "每欄三類總和須為 77。categoricalUnprovided 只有 nonid-real 一列（raw \"0\"）；categoricalUnknown 為 cmp036 的兩列（\"第三期\"／\"Phase III\"，後者用 ASCII III 而非 U+2162）。"
   }
  },
  "determinism": {
@@ -1354,7 +1430,7 @@
    "_note": "fixture 仍未含單端超界的範圍值——v0.6 已定案，可補；列為 M1 撰寫 C2 測試時一併加。"
   }
  ],
- "_status": "對齊規格 v0.6。GAP-1～GAP-9 全部結案；GAP-10（stats facet 名單與 F1 基線）、GAP-11（§9.3.6 評估順序）、GAP-12（§9.6 有理數比較）亦已於 v0.6 修訂，其驗證分別在 artifact_sample/ 與 b_failures/。尚未涵蓋：numericRange 單端超界、D／E／F／G／H 群、E6／F3 的長文字 fixture。",
+ "_status": "對齊規格 v0.7。GAP-1～GAP-12 全部結案。第四輪覆審（plan-verdict-r4.md）指出 v0.6 的修訂自造 3 個 High、6 個 Medium，其中 1.1／C5（比較鍵應以 (typed, flags) **組合**索引而非單一旗標）由本檔的 CMP-038／CMP-039 兩組複合狀態案例釘住。尚未涵蓋：D／E／F／G／H 群、E6／F3 的長文字 fixture。",
  "cohortClassification": {
   "_about": "同日 cohort（size ≥ 2）依 §6.4.2 semantic comparison key 的分類。protocol 依 identityNormalize 後非空者成組；空與空白-only 走 H: 分支不在此列。dateUnknown 的 Trial 以全部 record 為 cohort（DT-018／DT-019）。 v0.6 §6.4.2 補上 numericRangeInvalid／numericOutOfRange／categoricalUnknown 三個比較鍵，CMP-035／036／037 自 __SPEC_GAP__ 改判為衝突。",
   "conflicting": {
@@ -1385,6 +1461,9 @@
    ],
    "CMP-037": [
     "全球預計受試者人數"
+   ],
+   "CMP-038": [
+    "台灣預計受試者人數"
    ]
   },
   "rawVariantsOnly": {
@@ -1396,6 +1475,9 @@
     "台灣預計受試者人數"
    ],
    "CMP-033": [
+    "台灣預計受試者人數"
+   ],
+   "CMP-039": [
     "台灣預計受試者人數"
    ]
   },
@@ -1465,6 +1547,22 @@
    "b": "9007199254740993",
    "expect": "conflict",
    "_why": "兩值皆 numericOutOfRange、raw 不同 → 衝突。"
+  },
+  {
+   "label": "C5-8 複合狀態 numericRange+numericOutOfRange，raw 不同",
+   "field": "台灣預計受試者人數",
+   "a": "1-9007199254740992",
+   "b": "2-9007199254740992",
+   "expect": "conflict",
+   "_why": "v0.7 §6.4.2 第 10 列。兩者同屬複合狀態，比較鍵為 (\"numericOutOfRange\", conflictText(raw))，raw 不同故衝突。只驗原子狀態的 exhaustiveness 抓不到這一條。"
+  },
+  {
+   "label": "C5-9 複合狀態，NFKC 後等價",
+   "field": "台灣預計受試者人數",
+   "a": "1-9007199254740992",
+   "b": "１-９００７１９９２５４７４０９９２",
+   "expect": "same",
+   "_why": "NFKC 後兩者的 conflictText 相同 → 比較鍵相同 → 不衝突且帶 rawVariants。與 C5-8 成對。"
   }
  ],
  "specGapStates": {

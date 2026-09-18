@@ -160,7 +160,7 @@ def main():
               f"{c['value']!r} → {'通過' if passed else '失敗'}（oracle {c['expect']}）")
 
     print("\n[3] §9.6 驟降門檻（B4）")
-    kills_rounding = 0
+    kills = {2: 0, 3: 0, 4: 0, 6: 0}
     for c in oracle["rowcountDropCases"]:
         if c["prev"] is None:
             check(c.get("bootstrap") is True,
@@ -173,13 +173,31 @@ def main():
         warning = d > Fraction(1, 10)
         check(verdict == c["expect"] and warning == c["warning"],
               f"  └ 判定 {verdict}／warning={warning}（oracle {c['expect']}／{c['warning']}）")
-        r = round(float(d), 2)
-        rv = "hard-fail" if r > 0.20 else "publish"
-        rw = r > 0.10
-        if (rv, rw) != (verdict, warning):
-            kills_rounding += 1
-    check(kills_rounding >= 2,
-          f"本組有 {kills_rounding} 個案例能殺死「四捨五入到兩位小數」的實作（須 ≥2）")
+        for nd in kills:
+            r = round(float(d), nd)
+            if ("hard-fail" if r > 0.20 else "publish", r > 0.10) != (verdict, warning):
+                kills[nd] += 1
+    for nd in (2, 3, 4):
+        check(kills[nd] >= 2,
+              f"本組有 {kills[nd]} 個案例能殺死「四捨五入到 {nd} 位小數」的實作（須 ≥2）"
+              + ("——只有真實基線組（prev=18736）做得到" if nd == 4 else ""))
+
+    # 每個門檻須有「正下、正好、最接近且嚴格超過」三種位置（v0.7 B4）
+    for thr, name in ((Fraction(1, 10), "10%"), (Fraction(1, 5), "20%")):
+        pos = {"below": False, "exact": False, "just_above": False}
+        for c in oracle["rowcountDropCases"]:
+            if c["prev"] is None:
+                continue
+            prev, cur = c["prev"], c["cur"]
+            d = Fraction(prev - cur, prev)
+            if d == thr:
+                pos["exact"] = True
+            elif d < thr and Fraction(prev - cur + 1, prev) > thr:
+                pos["below"] = True
+            elif d > thr and Fraction(prev - cur - 1, prev) <= thr:
+                pos["just_above"] = True
+        check(all(pos.values()),
+              f"{name} 門檻有正下／正好／最接近且嚴格超過三種位置（實際 {pos}）")
 
     # 反向查核 oracle 的實測宣稱：float 與有理數在本規模下判定永遠相同
     diff = []

@@ -1,8 +1,8 @@
-# Taiwan Clinical Trial Radar — 規格 v0.6（consolidated）
+# Taiwan Clinical Trial Radar — 規格 v0.7（consolidated）
 
 > **這是唯一具規範效力的規格。** `Taiwan-Clinical-Trial-Radar-spec.md` v0.1 與本檔 v0.2–v0.4 均降為歷史文件，**不再具 normative 效力**。
-> 依據：2026-09-18 dataset 205 實測 ＋ Codex 三輪覆審（`plan-review-r1/r2/r3.md`、`plan-verdict-r1/r2/r3.md`）＋ A 群 fixture 反驗（`fixture-findings-a.md`）。
-> 狀態：**13 項動工前契約已封存。** M0.5 已完成——A 群 fixture 補齊、最小 artifact 樣本產出、B 群失敗注入與 §9.3.6／C4 反例齊備（`tests/fixtures/run_all.py` **244 條斷言**）。那一輪撞出 GAP-8～GAP-12，已併入本版。
+> 依據：2026-09-18 dataset 205 實測 ＋ Codex **四輪**覆審（`plan-review-r1`～`r4.md`、`plan-verdict-r1`～`r4.md`）＋ fixture 反驗（`fixture-findings-a.md`、`fixture-findings-m05.md`）。
+> 狀態：**14 項動工前契約已封存**（§14）。M0.5 完成後撞出 GAP-8～GAP-12 並改寫為 v0.6；第四輪限縮覆審（**Blocker 0**）指出 v0.6 的修訂自造 3 個 High、6 個 Medium，本版 v0.7 已全部修訂。**四輪 Blocker 走勢：2 → 0 → 1 → 0。**
 
 ---
 
@@ -183,29 +183,46 @@
 
 因此定義 **semantic comparison key**：
 
-**本表必須涵蓋 §9.3.3 field-scoped 旗標封閉集合的每一個狀態**（`rawVariants` 除外——它是比較的**結果**不是輸入）。v0.5 漏了三個（`numericRangeInvalid`／`numericOutOfRange`／`categoricalUnknown`），兩張表都在本文件內卻沒有對過差集。**修改任一張表時必須同時檢查另一張。**
+**比較鍵的索引鍵是「合法的 `(typed, flags)` 組合」，不是單一旗標。**
 
-| 欄位型別／語意狀態 | 比較鍵 |
-|---|---|
-| 文字欄位 | `conflictText(raw)` |
-| 合法數值（單值） | `("int", typed)` |
-| 合法數值（範圍，§6.6.3） | `("range", min, max)` |
-| 數值缺值 | `("numericMissing",)`——只有同為缺值才相等 |
-| 數值無法解析 | `("numericUnparsed", conflictText(raw))` |
-| 數值不合理 | `("numericImplausible", conflictText(raw))` |
-| **數值區間順序異常** | `("numericRangeInvalid", conflictText(raw))` |
-| **數值超出可表示範圍** | `("numericOutOfRange", conflictText(raw))` |
-| 分類 sentinel | `("unprovided",)` |
-| **分類非合法值** | `("categoricalUnknown", conflictText(raw))` |
-| 合法分類 | `("cat", canonical typed value)` |
-| 日期欄位（可解析） | `("date", ISO 日期)` |
-| 日期欄位（不可解析／缺值） | `(旗標名, conflictText(raw))` |
+v0.6 曾寫成「本表必須涵蓋 §9.3.3 旗標封閉集合的每一個狀態」——**那個等號是錯的**：旗標不互斥。`numericRange + numericOutOfRange` 是**複合**（超界的區間），`sourceZero` 是合法整數的**附加**旗標而非另一種比較狀態。照旗標逐一對應，實作遇到複合組合時沒有唯一答案：先看到 `numericRange` 會拿到 `typed=null`，先看到 `numericOutOfRange` 才得到規格預期的 raw-based key。
+
+因此改以**封閉的組合表**索引（下表的「狀態組合」欄即為唯一索引鍵）。`rawVariants` 不參與索引——它是比較的**結果**不是輸入。
+
+| # | 欄位型別 | 狀態組合（`typed` ＋ field flags） | 比較鍵 |
+|---:|---|---|---|
+| 1 | 文字 | `typed` 為字串或 `null`，無 flags | `("text", conflictText(raw))` |
+| 2 | 數值 | `typed` 為整數，flags `[]` | `("int", typed)` |
+| 3 | 數值 | `typed` 為整數 `0`，flags `[sourceZero]` | `("int", 0)`——與第 2 列同鍵，`sourceZero` **不影響比較** |
+| 4 | 數值 | `typed` 為 `{min,max}`，flags `[numericRange]` | `("range", min, max)` |
+| 5 | 數值 | `typed` 為 `null`，flags `[numericMissing]` | `("numericMissing",)`——只有同為缺值才相等 |
+| 6 | 數值 | `typed` 為 `null`，flags `[numericUnparsed]` | `("numericUnparsed", conflictText(raw))` |
+| 7 | 數值 | `typed` 為 `null`，flags `[numericImplausible]` | `("numericImplausible", conflictText(raw))` |
+| 8 | 數值 | `typed` 為 `null`，flags `[numericRangeInvalid]` | `("numericRangeInvalid", conflictText(raw))` |
+| 9 | 數值 | `typed` 為 `null`，flags `[numericOutOfRange]`（序 2 超界） | `("numericOutOfRange", conflictText(raw))` |
+| 10 | 數值 | `typed` 為 `null`，flags `[numericRange, numericOutOfRange]`（**序 3 超界**） | `("numericOutOfRange", conflictText(raw))`——**與第 9 列同鍵** |
+| 11 | 分類 | `typed` 為 `null`，flags `[categoricalUnprovided]` | `("unprovided",)` |
+| 12 | 分類 | `typed` 為 `null`，flags `[categoricalUnknown]` | `("categoricalUnknown", conflictText(raw))` |
+| 13 | 分類 | `typed` 為合法值，flags `[]` | `("cat", typed)` |
+| 14 | 期間日期 | `typed` 為 ISO 日期，flags `[]` | `("date", typed)` |
+| 15 | 期間日期 | `typed` 為 `null`，flags 為四個 `period*` 之一 | `(旗標名, conflictText(raw))` |
+
+**第 9／10 列同鍵是刻意的**：兩者都是「超出可表示範圍」，比較時只看 raw 原文。
+保留 `numericRange` 旗標僅供 UI 說明來源形狀（§6.6.3），**不進比較鍵**——否則
+`9007199254740992` 與 `1-9007199254740992` 會因為旗標不同而被判為衝突，但它們本來就是不同的 raw，
+比 `conflictText(raw)` 已經足以區分，多一個維度只是把同一件事判兩次。
+
+**第 3 列同理**：`sourceZero` 只影響 UI 文案（「0（來源填 0）」），不影響「兩筆是不是同一個值」。
 
 **比較鍵相同即不衝突**，即使 raw 不同。
 
 **三個新增狀態為什麼採 `(旗標名, conflictText(raw))`**：它們的 typed 都是 `null`，唯一帶資訊的是 raw 原文，而 UI 本來就要顯示 raw 加異常提示。若改比 typed（皆 `null`）會判為不衝突並任取一筆 raw——那正是第三輪否決 GAP-5 建議的理由。`40-20` 與 `50-30` 都是順序異常，但它們是兩筆**不同的來源錯誤**，任取一筆呈現等於替上游決定哪一筆才算數。採本規則後這三組**皆判為衝突**，與「寧可漏報不可誤報」一致。
 
-**比較鍵的封閉性檢查**：實作須有一個窮盡的 dispatch（例如對狀態列舉做 exhaustive match），**遇到未涵蓋的狀態必須硬失敗**，不得 fallback 到「比 raw」或「視為相等」。未涵蓋的狀態是規格缺口，靜默 fallback 會把缺口變成一個看不見的行為。
+**封閉性檢查以「組合」為單位**：實作須對 `(欄位型別, typed 的形狀, 排序後的 flags 集合)` 做窮盡 match，**遇到不在上表的組合必須硬失敗**，不得 fallback 到「比 raw」或「視為相等」。
+
+**為什麼一定要以組合為單位**：以單一旗標做窮盡檢查時，一個「合法 range 正確、scalar 超界正確、但複合的超界 range 壞掉」的實作**會通過**——那正是本規格最怕的「測試全綠但功能是壞的」。上表第 10 列就是為此存在。
+
+未涵蓋的組合是規格缺口，靜默 fallback 會把缺口變成一個看不見的行為。新增任何 field flag 時，**必須先問它會與哪些既有旗標共存**，再決定要新增哪幾列。
 
 #### 6.4.3 `rawVariants`：欄位層級旗標
 
@@ -655,7 +672,16 @@ v0.4 同時要求「每個非 manifest 檔案內含 `datasetVersion`」與「`da
 | `period` | 否 | §8.4 是**重疊**語意，同一 Trial 可落入多個期間區間，理由同 `enroll` |
 | `updated` | 否 | 值域是連續日期而非固定 bucket，bucket 切法屬 UI 決策；統計卡改以「全站 `sourceUpdatedAt`」單一數字呈現（§7.2） |
 
-**E2 的統計卡 oracle 以本清單為唯一來源**：DOM 中出現不在本清單的統計卡必須使測試失敗；本清單中缺少的也必須失敗（雙向對帳）。新增 facet 須改本節，不得只改前端。
+**本清單是 facet widget 的唯一來源，不是「全部統計呈現」的唯一來源。**
+
+呈現層分兩類，**各由不同契約約束**：
+
+| 類別 | 是什麼 | oracle 來源 |
+|---|---|---|
+| **facet widget** | 依某個維度分組計數的統計卡（`phase`／`scale`／`applicant`） | 本清單，E2 雙向對帳 |
+| **非 facet metadata** | 單值的資料來源資訊，如全站 `sourceUpdatedAt`、`builtAt`、Trial／SourceRecord 總數 | §9.3.5 的 `denominators` 與 manifest，由 E3 驗證 |
+
+v0.6 曾寫成「E2 的統計卡 oracle 以本清單為唯一來源」，那會使**合法的 `sourceUpdatedAt` 卡必須使測試失敗**——而 §9.3.5 自己在上表才剛指定 `updated` 要以那張卡呈現。兩段互相矛盾。分開之後：新增 facet 須改本節，新增 metadata surface 走 E3，兩者都不得只改前端。
 
 每個 facet 的 `buckets` 計數 + `unprovided` + `conflicted` **必須等於** `denominators.trials`。
 
@@ -686,19 +712,23 @@ v0.4 同時要求「每個非 manifest 檔案內含 `datasetVersion`」與「`da
 
 #### 9.3.6 不變量
 
-**不變量之間有依賴，故必須依下列順序評估。** 上游步驟失敗時，下游那條回報「**無法評估**」而非「違規」；對外行為不變（一律 `INTEGRITY_DIGEST` 硬失敗），變的是 report 的歸因。
+**每條不變量只宣告自己的必要前置條件，不設全域順序。** 前置條件不成立時，該條回報「**無法評估**」而非「違規」；對外行為不變（一律 `INTEGRITY_DIGEST` 硬失敗），變的是 report 的歸因。
 
-平鋪列出而不指定順序做不到 B6 要求的「各自獨立反例」：`recordIds` 的排序鍵取自該 record 的 `資料更新時間`，而那筆資料在 shard 裡——record 放錯 shard 時排序鍵**取不到**，硬算會把「查不到」當成「不可採計日期→置末」而同時誤報排序違規。反例一旦必然連帶觸發另一條，**只實作其中一條檢查的驗證器也會通過測試**。
+為什麼需要前置條件：`recordIds` 的排序鍵取自該 record 的 `資料更新時間`，而那筆資料在 shard 裡——record 放錯 shard 時排序鍵**取不到**，硬算會把「查不到」當成「不可採計日期→置末」而同時誤報排序違規。反例一旦必然連帶觸發另一條，**只實作其中一條檢查的驗證器也會通過測試**（B6 的「各自獨立反例」就白寫了）。
 
-| 序 | 不變量 | 內容 |
-|---:|---|---|
-| 1 | **inventory** | `manifest.files` 列出的路徑集合 == `public/data/` 中**除 `manifest.json` 外**的全部檔案 |
-| 2 | **跨檔版本綁定** | 每個非 manifest 檔案的 top-level `datasetVersion` == `manifest.datasetVersion` |
-| 3 | **referential integrity** | 每個 `recordId` 存在於 `trial.shard` 指定的 shard；每個 record 被**恰好一個** Trial 引用**一次**（同一 Trial 內重複引用亦違規）；`latestCohort ⊆ recordIds` |
-| 4 | **計數一致** | `trial.recordCount` == 該 shard 內 `trials[trialId].recordIds` 長度；`trial.latestCohortCount` == `latestCohort` 長度。**（方案 B 的必要防漂移條件。）** |
-| 5 | **排序 total order** | `trials` 依 `trialId` 昇序；`recordIds` 依（可採計日期降序、不可採計者置末、`recordId` 昇序）；`latestCohort` 依 `recordId` 昇序。**只對通過序 3 的 Trial 評估** |
-| 6 | **stats 一致性** | 每個 facet 的 bucket 計數 == 依 `trials-index` 重算的結果；且 `buckets + unprovided + conflicted` == `denominators.trials`（§9.3.5） |
-| 7 | **`datasetVersion`／`artifactDigest`** | 依 §9.3.2 可重算且與 manifest 所載相符 |
+**但前置條件是逐條的，不是流水號。** v0.6 曾寫成全域七步，那會讓一個 shard 錯誤**遮蔽**同時存在的 stats 或 digest 錯誤——那兩條根本不依賴 record 歸屬。多缺陷時只能逐輪修、逐輪重跑，CI 的歸因能力反而比平鋪列出還弱。
+
+| # | 不變量 | 內容 | 必要前置條件 |
+|---:|---|---|---|
+| I1 | **inventory** | `manifest.files` 列出的路徑集合 == `public/data/` 中**除 `manifest.json` 外**的全部檔案 | 無 |
+| I2 | **跨檔版本綁定** | 每個非 manifest 檔案的 top-level `datasetVersion` == `manifest.datasetVersion` | 該檔可讀且為合法 JSON |
+| I3 | **referential integrity** | 每個 `recordId` 存在於 `trial.shard` 指定的 shard；每個 record 被**恰好一個** Trial 引用**一次**（同一 Trial 內重複引用亦違規）；**shard 內不得有零 Trial 引用的 record**；`latestCohort ⊆ recordIds` | `trials-index` 與相關 shard 可讀 |
+| I4 | **計數一致** | `trial.recordCount` == 該 shard 內 `trials[trialId].recordIds` 長度；`trial.latestCohortCount` == `latestCohort` 長度。**（方案 B 的必要防漂移條件。）** | 同 I3 |
+| I5 | **排序 total order** | `trials` 依 `trialId` 昇序；`recordIds` 依（可採計日期降序、不可採計者置末、`recordId` 昇序）；`latestCohort` 依 `recordId` 昇序 | `trials` 的順序無前置；**某 Trial 的 `recordIds` 排序只在該 Trial 通過 I3 時評估**（否則取不到排序鍵） |
+| I6 | **stats 一致性** | 每個 facet 的 bucket 計數 == 依 `trials-index` 重算的結果；且 `buckets + unprovided + conflicted` == `denominators.trials`（§9.3.5） | `trials-index` 與 `stats.json` 可讀。**不依賴 I3／I4／I5** |
+| I7 | **`datasetVersion`／`artifactDigest`** | 依 §9.3.2 可重算且與 manifest 所載相符 | `manifest.files` 列出的檔案全部可讀。**不依賴 I3～I6** |
+
+「無法評估」須逐條記入 report 並註明是哪個前置條件不成立；**不得**與「通過」混為一談。
 
 **schemaVersion 升級**（非逐次檢查的不變量，是修訂規則）：欄位移除、改名、型別或語意變更須 bump；純新增可選欄位不 bump。判準是「舊版前端讀到新資料會做什麼」。
 
@@ -812,11 +842,20 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 - **B1** §9.5 **每一個** error code 各有測試，斷言：(a) 非零且相異的 exit code；(b) 已發布狀態未變（完整檔名集合、每檔 SHA-256、`manifest.files` 指向、`artifactDigest` 均不變）；(c) **無新增正式檔**。content-type 須測 `application/zip;charset=utf-8`（通過）與 `text/html`（失敗）。
 - **B2** 每個案例寫死 structured error code 與 layer；**不得**以 stderr 字串判定。另須有**多重異常** fixture 驗證 §9.5 的 precedence。
 - **B3** 斷言 CSV schema **已通過後**才因零列失敗，明確回傳 `ZERO_ROWS`，且已發布 digest 不變。
-- **B4** 門檻案例須含 `drop` = 0.0／0.10／0.1001／**0.20**／0.2001／整數列數邊界／首次無 baseline（含 bootstrap 但 0 列 → 仍走 `ZERO_ROWS`）。逐案例斷言 warning／success／hard-failure 與**是否發布**，且 warning 須出現在 `qa/quality-report.json` 的結構化欄位。**`0.1001` 與 `0.2001` 兩例的作用是殺死「先四捨五入再比較」的實作**（§9.6）；以 `(prev, cur)` 整數對驅動，不需造大 CSV。
+- **B4** 門檻案例須含 `drop` = 0.0／0.10／0.1001／**0.20**／0.2001／整數列數邊界／首次無 baseline（含 bootstrap 但 0 列 → 仍走 `ZERO_ROWS`）。逐案例斷言 warning／success／hard-failure 與**是否發布**，且 warning 須出現在 `qa/quality-report.json` 的結構化欄位。**兩個固定小數例（`0.1001`／`0.2001`）只殺得死「四捨五入到 2 位」，必須另加真實基線的邊界例。** 實測 `prev = 18736`（本資料集列數）時：
+
+| `cur` | 精確 drop | 正確判定 | 四捨五入到 2／3／4 位 |
+|---:|---:|---|---|
+| 16862 | 0.10002135 | publish + **warning** | 0.1 → **warning 消失** |
+| 14988 | 0.20004270 | **hard-fail** | 0.2 → **照樣發布** |
+
+這兩個 `cur` 恰好是各自門檻「**最接近且嚴格超過**」的整數，四捨五入到 4 位仍然漏判（要 6 位才抓得到）。B4 須對每個門檻各斷言三種位置——**正下、正好、最接近且嚴格超過**——且分類與精確比例 oracle 完全一致。以 `(prev, cur)` 整數對驅動，不需造大 CSV。
 - **B5** 失敗注入點須涵蓋**每一個正式狀態變更之後**：替換第一個／部分／最後一個 artifact 後、刪除 orphan artifact 途中、`git add` 只含部分變更、commit 失敗、commit 成功但 push 失敗、push 成功但部署啟用失敗，以及**非例外式終止**（SIGTERM／取消）。每個點斷言：**不存在部分發布的 commit**。
 - **B6** §9.3.6 的每一條不變量各有**獨立**反例：record 被兩個 Trial 引用、同一 Trial 重複引用、record 放錯 shard、`latestCohort ⊄ recordIds`、**`recordCount` 與 shard 清單長度不符**、**`latestCohortCount` 與 `latestCohort` 長度不符**、三種排序各自未排序、`manifest.files` 與實際檔案集合不符（**孤兒檔**與**列出但不存在**兩種形狀）、facet bucket 計數與 index 不符 → 全部須 `INTEGRITY_DIGEST` 硬失敗。
   三條硬性要求：(a) **缺陷須注入在計算 digest 之前**，使 artifact 的 digest 自洽——改完最終位元組不重算的話，測到的只是 digest 本身，referential integrity 那幾條永遠不會被執行到；每個反例另須斷言 digest 相關的不變量**未**觸發。(b) **斷言違規集合 exactly equals 預期**，不是「包含」——用「包含」的話，一個把所有檢查都回報違規的驗證器會全過。(c) 須有**未變造樣本零違規**的反向哨兵。
   註：「record 被兩個 Trial 引用」的反例必須挑**同一個 shard 內**的兩個 Trial，否則會連帶違反 shard 歸屬而無法隔離。
+  **(d) mutation inventory 與 §9.3.6 的 I1–I7 須雙向對帳**：每條不變量至少一個反例，每個反例對應得到某條不變量；缺任一方向即為未涵蓋。特別容易漏的三類——**零 Trial 引用的 orphan record**（只數已被引用者的 owner count 會漏掉）、**跨檔 `datasetVersion` 與兩種 digest 各自的獨立反例**（省略整類重算仍可通過其餘 mutation）、**三個 facet 各自的 bucket mismatch**（只驗一個 facet 也能通過單一 facet 的 mutation）。
+  **(e) 「無法評估」也要有反例**：注入一個使某條前置條件不成立的缺陷，斷言下游那條回報「無法評估」而非「通過」——把兩者混為一談的驗證器必須被殺死。
 - **B7** 跨版本綁定：注入「manifest 為新版但某 shard 為舊 `datasetVersion`」→ 前端 fail-closed 顯示「資料版本不一致，請重新載入」，**不得**混用渲染。另斷言除 `manifest.json` 外所有檔名都帶內容雜湊、且 manifest 為唯一固定 URL。
 - **B8 `datasetVersion` 的可計算性與敏感性** 對同一輸入兩次 build 得到相同 `datasetVersion`（**證明無循環定義**）；任一欄位值改變一個字元 → `datasetVersion` 改變；**兩個檔案內容互換** → `datasetVersion` 改變（證明邏輯檔名已納入）；`artifactDigest` 與 `datasetVersion` 為不同值且各自依 §9.3.2 可重算。
 - **B9 no-change 冪等** 同一凍結來源連跑兩次，`datasetVersion` 相同 → 第二次不發布、不 commit、`builtAt` 不變；改變 `sourceSha256` 但 logical payload 不變 → 仍不發布。
@@ -824,14 +863,17 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 ### C. Sentinel、分類與數值
 
 - **C1** **兩個**分類欄位**各自**通過五處斷言：typed `null`、raw 仍等於 `"0"`、`stats.json` facet 不含 `"0"`、filter DOM 不含該選項、卡片／詳情顯示「未提供」。另測非合法值 → `categoricalUnknown` + warning。
-- **C2** 依 §6.6.3 的**兩個階段**逐筆斷言 typed、旗標、warning 分級與 UI 文字：階段一的每一列（空／正整數／前導零／`0`／嚴格範圍／`min>max`／負數／文字），以及階段二的兩種超界（**序 2 命中後超界**、**序 3 命中且單端超界**）。`sourceZero` 只在值為 0 時為 true。**前導零須斷言 raw 顯示為 `026` 而非 `26`**。單端超界須斷言 typed 為**整個 `null`**（不得留 `{min:1, max:null}`）、旗標為 `numericRange` ＋ `numericOutOfRange`、`enroll` 歸「未提供」。
+- **C2** **兩個數值欄位（`全球預計受試者人數`／`台灣預計受試者人數`）各自跑完整矩陣**，不得只驗其中一欄——否則另一欄可以走一套完全不同的錯誤邏輯而通過。矩陣為 §6.6.3 的兩個階段：階段一的每一列（空／正整數／前導零／`0`／嚴格範圍／`min>max`／負數／文字），以及階段二的兩種超界（**序 2 命中後超界**、**序 3 命中且單端超界**）。
+  逐例斷言 typed、**field flag 集合（完全相等，不是「包含」）**、warning 分級、UI 文字與 `enroll` 歸類。**旗標用「包含」比對時，實作可以額外附加 `numericUnparsed` 等錯誤旗標而通過，錯誤會經由 §6.4.2 的組合表擴散到衝突判定與 UI。** `sourceZero` 只在值為 0 時為 true。**前導零須斷言 raw 顯示為 `026` 而非 `26`**。單端超界須斷言 typed 為**整個 `null`**（不得留 `{min:1, max:null}`）、旗標為 `[numericRange, numericOutOfRange]`、`enroll` 歸「未提供」。
 - **C3** 寫死 `N/A`／`NA`／`""` 三類的**精確計數與對應 recordId**（**計數須數全部列，不是為該案例設計的列**），並斷言詳情切換到該 record 後的**可見文字精確相等**。
 - **C4 反向哨兵**（三個**獨立**且**確為違規**的 mutation；**不得**使用「分類 typed 轉 null」，那是 §6.6.1 規定的正確行為）：
   1. 分類 sentinel 的 **raw 值遺失** → C1 的 raw 斷言須失敗
   2. `stats.json` facet **保留 `"0"`** → C1 的 facet 與 filter DOM 斷言須失敗
   3. 文字 sentinel 三型**塌成同一值** → C3 須失敗
 - **C5 semantic comparison key** **§6.4.2 表中每一列各有一組正例**，不得只測其中幾型。至少含：`""` vs `"-5"` **衝突**（typed 皆 null 但語意狀態不同）；`"20"` vs `"２０"`（全形）**不衝突**且帶 `rawVariants`；`"20-40"` vs `"20～40"` **不衝突**且帶 `rawVariants`；`"20-40"` vs `"20-41"` **衝突**；`"40-20"` vs `"50-30"`（皆 `numericRangeInvalid`）**衝突**；`"第三期"` vs `"Phase III"`（皆 `categoricalUnknown`）**衝突**；`2^53` vs `2^53+1`（皆 `numericOutOfRange`）**衝突**。
-  另須有 **exhaustiveness 測試**：斷言比較鍵的 dispatch 涵蓋 §9.3.3 旗標封閉集合的每一個狀態（`rawVariants` 除外），且遇到未涵蓋狀態時**硬失敗而非 fallback**。
+  **必含複合狀態**：`1-9007199254740992` vs `2-9007199254740992`（皆為 §6.4.2 第 10 列的超界 range，raw 不同）須判**衝突**；`1-9007199254740992` vs `１-９００７１９９２５４７４０９９２`（NFKC 後等價）須判**不衝突**且帶 `rawVariants`。
+  **exhaustiveness 測試以「狀態組合」為單位**，不是單一旗標：斷言 dispatch 涵蓋 §6.4.2 組合表的 15 列，且遇到表外組合時**硬失敗而非 fallback**。
+  **以單一旗標做窮盡檢查是不夠的**——一個「合法 range 正確、scalar 超界正確、複合的超界 range 壞掉」的實作會通過那種檢查，而那正是本規格最怕的「測試全綠但功能是壞的」。
 - **C6 `rawVariants` 的層級** 斷言 `rawVariants` 出現在**該欄位的 `flags`**，且 Trial 層級**不存在**等義旗標；代表值為 `recordId` 字典序最小者的 raw；詳情頁列出 cohort 中**每一筆** record 的原始值（不得只列去重文字）。
 
 ### D. 搜尋與篩選
@@ -848,7 +890,10 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 ### E. 呈現與誤導防範
 
 - **E1** 以「**允許呈現的狀態概念封閉清單** + §10 三項免責文句的正向精確斷言」為主 oracle；禁字只作 mutation guard。**不對來源原文設無條件禁字**。
-- **E2** 由**實際 DOM／card schema 反向比對** oracle inventory，而 **oracle 清單的唯一來源是 §9.3.5 的封閉 facet 名單**（`phase`／`scale`／`applicant`）：任何存在於 DOM 但不在清單中的統計卡**必須使測試失敗**，清單中缺少的也必須失敗（雙向對帳）。每張卡寫死精確值、單位、分母類型；各 facet 的 `buckets + unprovided + conflicted` 須等於 `denominators.trials`。
+- **E2** 分兩層，**對象不同、oracle 來源不同**（§9.3.5）：
+  **(a) facet widget**：inventory 以 §9.3.5 的封閉 facet 名單（`phase`／`scale`／`applicant`）雙向對帳——DOM 中有而清單中無者失敗，清單中有而 DOM 中無者亦失敗。每張卡斷言完整的 bucket `value/count` **multiset 完全相等**（不是只比幾個值或只比總和）、`unprovided`、`conflicted`、單位與分母類型。各 facet 的 `buckets + unprovided + conflicted` 須等於 `denominators.trials`。
+  **(b) 非 facet metadata surface**（`sourceUpdatedAt`、`builtAt`、總數）：由 E3 驗證，不納入 facet inventory。
+  **統計 surface 的辨識不得只依 CSS class 或 card selector**——否則弱化前端把未核准的統計放進一般 section 或 badge 就能繞過整個 inventory。須以「使用者可見的統計概念」為辨識依據（例如可見文字中出現分組計數的區塊），並在測試中寫死該辨識規則。
 - **E3** 斷言各 label 對應**精確 fixture 值**（來源 `資料更新時間` 對應 record、`builtAt` 對應 manifest），覆蓋首頁、結果頁、詳情頁與 record 切換後。
 - **E4** 建立**來源資料可到達的輸出 surface 封閉 inventory**（卡片、詳情、record 切換、filter option、搜尋命中標籤、統計 label、accessible name、URL 顯示），逐一測 XSS fixture。
 - **E5** 逐頁斷言 §10 三項核心性質的**可見文字**，可見性綁定 G1／G2 的 viewport、最小字級與對比 oracle。
@@ -859,8 +904,12 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 ### F. 效能（分層預算）
 
 - **F1** **Tier 0（預設 scope 的冷啟動）≤1.5 MB gzip**。定義為「冷啟動到**可搜尋 readiness**」的全部 network responses；readiness 以**功能性 probe** 判定（執行一個固定查詢並取得正確結果集才算就緒）。以 production build 與固定 gzip 設定量測，列出納入檔案清單與總和寫入 CI artifact。
-  **Tier 0 的資料層檔案清單（封閉）**：`manifest.json` ＋ `trials-index.<h>.json` ＋ `stats.<h>.json`。三者都在冷啟動路徑上——首頁要顯示統計卡（E2）、篩選控制項的值域來自 `stats.json` 的 facet buckets（§9.3.5）。
-  **實測基線僅涵蓋 `trials-index`（含 `searchShortLatest`、不含 `recordIds`）1,236 KiB gzip；`stats.json` 尚未量測**，其大小主要由 `applicant` facet 的 distinct 值數決定，而該基數**從未量測**（PROGRESS.md 的欄位表是「差異欄位分布（按組數）」，不是 cardinality）。**M1 產出第一份真實 artifact 後必須補量三者總和；在補量之前不得調整 1.5 MB 門檻。** 若總和超出，先報瓶頸歸因，不調鬆數字。
+  **口徑定案：1.5 MB 量的是「全部 network responses」，含 HTML、JS、CSS、字型與資料檔。** 這是使用者真正付的冷啟動成本；只量資料層會讓 CI 在真實冷啟動超標時仍顯示合格。
+  **資料層子集合（封閉，須恰好等於這三個）**：`manifest.json` ＋ `trials-index.<h>.json` ＋ `stats.<h>.json`。三者都在冷啟動路徑上——首頁要顯示統計卡（E2）、篩選控制項的值域來自 `stats.json` 的 facet buckets（§9.3.5）。子集合另立斷言，**不取代**總和斷言。
+  **readiness probe 不得早於這三個檔載入完成就判定就緒**——否則把必要的 response 排除在量測之外，等於自己放水。
+  **實測基線僅涵蓋 `trials-index`（含 `searchShortLatest`、不含 `recordIds`）1,236 KiB gzip**——它**不是** F1 的基線，只是資料子集合中最大的一項。`stats.json` 尚未量測（其大小主要由 `applicant` facet 的 distinct 值數決定，而該基數**從未量測**：PROGRESS.md 的欄位表是「差異欄位分布（按組數）」，不是 cardinality），前端 bundle 亦尚未存在。
+  **代價要寫明**：資料層已佔 1,236 KiB，只剩約 **264 KiB** 給 `stats.json` 加上整個前端 bundle。M1／M2 一量很可能超標。**超標時先報瓶頸歸因，不調鬆數字**（§10 把效能排在誤導與資料正確性之後——超標是要解的工程問題，不是安全問題；而「量了一個不是使用者成本的數字然後宣告合格」才是會誤導自己的那種錯）。
+  **驗收須同時斷言兩件事**：(i) readiness 前的**全部 response** 的 gzip 總和 ≤ 1.5 MB，清單寫入 CI artifact；(ii) 其中的資料檔集合**恰好等於**上述三個。只做 (ii) 的量測器會漏掉 JS／CSS／字型。
   > 門檻自 v0.4 的 1.0 MB 上調為 1.5 MB：原基線「715–900 KiB」是估算值，實測有誤。卡片資料本身即 903 KiB；`recordIds` 移入 shard 後省 299 KiB；**拆成獨立檔反而更大**（903+693=1,596 > 1,236），故不拆。
 - **F2** 各按需 tier 的實測 gzip 上限記錄於規格與 CI artifact（`all`+`latest` 2,044 KiB；`short`+`all` 1,649 KiB；`all`+`all` 另加 5,389 KiB），**不計入 F1**，超出記錄值 20% 須在 CI 告警。
 - **F3** 長文字隔離：在 `納入條件`／`排除條件`／`試驗目的`／`主要評估指標` 放**多筆分散的唯一 canary**（≥5 筆，跨不同 shard），斷言 Tier 0 的全部 response 與 bundle 均不含其**內容**，且**初始 payload 的 schema 不含這些欄位鍵**。
@@ -901,7 +950,7 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 - Service worker／離線。
 - Email 訂閱。
 
-## 14. 動工前已封存的契約（13 項）
+## 14. 動工前已封存的契約（14 項）
 
 | # | 契約 | 章節 | 來源 |
 |---|---|---|---|
@@ -915,12 +964,23 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 | 8 | manifest file-set 不變量修正；只輸出非空 shard | §9.3.1／§9.3.6 | r3 Medium |
 | 9 | 方案 B 的 index／shard 職責切分與計數不變量；F1 改 ≤1.5 MB | §6.4.4／§9.3.6／F1 | 實測 S3，使用者定案 |
 | 10 | 嚴格範圍解析 `numericRange` 與 `enroll` 的區間重疊語意 | §6.6.3／§8.4／D8 | 實測 S4，使用者定案 |
-| 11 | semantic comparison key **涵蓋 §9.3.3 旗標封閉集合的每一個狀態**，未涵蓋者硬失敗不 fallback | §6.4.2 | M0.5 GAP-8 |
-| 12 | §9.3.6 不變量的**評估順序**與「無法評估」處置 | §9.3.6 | M0.5 GAP-11 |
-| 13 | `stats.json` 的 **facet 名單封閉為三個**，E2 以它為唯一 oracle 來源 | §9.3.5／E2 | M0.5 GAP-10 |
+| 11 | semantic comparison key 以**封閉的 `(typed, flags)` 組合表**（15 列）索引，表外組合硬失敗不 fallback | §6.4.2 | M0.5 GAP-8 ＋ r4 1.1／C5 |
+| 12 | §9.3.6 每條不變量**各自宣告必要前置條件**，「無法評估」≠「通過」 | §9.3.6 | M0.5 GAP-11 ＋ r4 1.2 |
+| 13 | `stats.json` 的 **facet 名單封閉為三個**，只約束 facet widget；非 facet metadata 走 E3 | §9.3.5／E2 | M0.5 GAP-10 ＋ r4 2.1 |
+| 14 | **F1 的 1.5 MB 量的是全部 network responses**，三個資料檔只是須恰好相等的子集合 | §11 F1 | r4 2.2／F1，使用者定案 |
 
 ## 15. 修訂紀錄
 
+- **v0.7（2026-09-18）** 依 `plan-verdict-r4.md`（接受 9／部分接受 2／拒絕 0／Blocker 0）改寫。**本輪 11 項發現全部是 v0.6 修訂自己造的，沒有一項是 v0.5 遺留**——第四次應驗「修訂會製造新洞」。形狀一致：**為了關掉一個洞而引入的新概念，本身沒有被定義清楚。** 主要變更：
+  - **§6.4.2 的比較鍵改以「合法 `(typed, flags)` 組合」索引**（15 列封閉表）。v0.6 寫的「涵蓋旗標封閉集合的每一個狀態」**那個等號是錯的**——旗標不互斥：`numericRange + numericOutOfRange` 是複合、`sourceZero` 是附加。照旗標逐一對應時，複合組合沒有唯一答案。新表明定第 9／10 列同鍵（超界只看 raw）、第 3 列與第 2 列同鍵（`sourceZero` 不影響比較）
+  - **§9.3.6 的全域七步順序改為「每條各自的必要前置條件」**。v0.6 為了隔離一個排序案例而設全域流水號，反而讓一個 shard 錯誤**遮蔽**同時存在的 stats 或 digest 錯誤——那兩條根本不依賴 record 歸屬。另補上 I3 的「shard 內不得有零 Trial 引用的 record」
+  - **§9.3.5 分離「facet widget」與「非 facet metadata surface」**。v0.6 一邊寫「`updated` 改以全站 `sourceUpdatedAt` 單一數字呈現」，一邊寫「E2 的統計卡 oracle 以本清單為唯一來源」——照字面實作，那張合法的卡必須使測試失敗。同一節內自相矛盾
+  - **F1 口徑定案為「全部 network responses」**（使用者決定），三個資料檔降為**須恰好相等的子集合斷言**。v0.6 兩種口徑並存無法唯一判定。代價寫進規格：資料層已佔 1,236 KiB，只剩約 264 KiB 給 `stats.json` 加整個 bundle，**超標先報瓶頸歸因不調鬆數字**
+  - **B4 補真實基線的邊界例**：`prev=18736` 時 `cur=16862`／`14988` 恰為兩門檻「最接近且嚴格超過」的整數，**四捨五入到 2／3／4 位全部漏判**（要 6 位才抓得到）。原本的 `0.1001`／`0.2001` 只殺得死 2 位
+  - **B6 補 (d) 與 §9.3.6 的 I1–I7 雙向對帳、(e) 「無法評估」也要有反例**。特別點名三類容易漏的反例：零 Trial 引用的 orphan record、跨檔版本與兩種 digest 各自的獨立反例、三個 facet 各自的 bucket mismatch
+  - **C2 明定兩個數值欄位各自跑完整矩陣、旗標集合須「完全相等」**（用「包含」比對時可附加錯誤旗標而通過）
+  - **C5 的 exhaustiveness 改以「狀態組合」為單位**，並必含複合的超界 range 兩組案例。以單一旗標做窮盡檢查時，「合法 range 對、scalar 超界對、複合超界 range 壞掉」的實作會通過
+  - **E2 拆為 (a) facet widget 雙向對帳 ＋ 完整 bucket multiset、(b) 非 facet metadata 走 E3**，並規定統計 surface 的辨識**不得只依 CSS class 或 card selector**
 - **v0.6（2026-09-18）** 依 `.ai-review/fixture-findings-m05.md` 的 GAP-8～GAP-12 改寫。**這五個洞不是讀 prose 讀出來的，是把 v0.5 的契約真的做出來時撞到的。** 主要變更：
   - **§6.4.2 補上三個漏掉的語意狀態**（`numericRangeInvalid`／`numericOutOfRange`／`categoricalUnknown`），皆採 `(旗標名, conflictText(raw))`。v0.5 的表看起來很完整（10 列），但與 §9.3.3 的旗標封閉集合有三個差集——**兩張表都在本文件內，只是沒有人對過**。另要求以窮盡 dispatch 實現，遇未涵蓋狀態**硬失敗不 fallback**
   - **§6.6.3 拆成兩階段**：階段一是原本的序 1–6，階段二是後置的可表示範圍檢查。v0.5 把範圍檢查寫成表後的獨立段落而沒有序位，與「第一個命中者決定結果」字面矛盾。並明定**單端超界時整個 typed 為 `null`**（不得留 `{min:1, max:null}`，半個區間無法參與 §8.4 的重疊判定）

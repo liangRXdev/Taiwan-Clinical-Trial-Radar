@@ -536,39 +536,63 @@ def main():
                  if any(nfkc(r[f]).strip().casefold() == "test" for f in PRESENTATION_FIELDS)]
     check(by_rule_b, f"≥1 筆僅以 TEST 值型觸發（§6.2.2 (b)）：{sorted(by_rule_b)}")
 
-    print("\n[8] §6.4.2 的比較鍵 dispatch 為窮盡（GAP-8 已於 v0.6 結案）")
+    print("\n[8] §6.4.2 的比較鍵以「(typed, flags) 組合」索引且窮盡（v0.7）")
     check(not spec_gaps and not gap_dependent_groups,
-          f"不存在未定義比較鍵的狀態（實際 {sorted({g[0] for g in spec_gaps})}）")
+          f"不存在未定義比較鍵的組合（實際 {sorted({g[0] for g in spec_gaps})}）")
 
-    # 窮盡性：§9.3.3 的 field-scoped 旗標封閉集合（rawVariants 除外），每一個都要取得比較鍵
-    covered = {
-        "categoricalUnprovided": ("臨床試驗期別", "0"),
-        "categoricalUnknown": ("臨床試驗期別", "第三期"),
-        "numericMissing": ("台灣預計受試者人數", ""),
-        "sourceZero": ("台灣預計受試者人數", "0"),
-        "numericRange": ("台灣預計受試者人數", "20-40"),
-        "numericRangeInvalid": ("台灣預計受試者人數", "40-20"),
-        "numericImplausible": ("台灣預計受試者人數", "-5"),
-        "numericUnparsed": ("台灣預計受試者人數", "約400"),
-        "numericOutOfRange": ("台灣預計受試者人數", str(2 ** 53)),
-        "periodStartMissing": ("試驗預計執行期間起", ""),
-        "periodStartUnparsed": ("試驗預計執行期間起", "2025/13/01"),
-        "periodEndMissing": ("試驗預計執行期間迄", ""),
-        "periodEndUnparsed": ("試驗預計執行期間迄", "2025/13/01"),
-    }
-    missing_key = []
-    for flag, (field, sample) in sorted(covered.items()):
+    # v0.7 §6.4.2 的 15 列組合表。索引鍵是**組合**不是單一旗標——
+    # 以單一旗標做窮盡檢查時，「合法 range 對、scalar 超界對、複合的超界 range 壞掉」
+    # 的實作會通過（Codex 第四輪 C5）。
+    HUGE = str(2 ** 53)
+    COMBINATIONS = [
+        (1, "text", "臨床試驗計畫中文名稱", "任意文字", ()),
+        (2, "int", "台灣預計受試者人數", "42", ()),
+        (3, "int-zero", "台灣預計受試者人數", "0", ("sourceZero",)),
+        (4, "range", "台灣預計受試者人數", "20-40", ("numericRange",)),
+        (5, "numericMissing", "台灣預計受試者人數", "", ("numericMissing",)),
+        (6, "numericUnparsed", "台灣預計受試者人數", "約400", ("numericUnparsed",)),
+        (7, "numericImplausible", "台灣預計受試者人數", "-5", ("numericImplausible",)),
+        (8, "numericRangeInvalid", "台灣預計受試者人數", "40-20", ("numericRangeInvalid",)),
+        (9, "numericOutOfRange-scalar", "台灣預計受試者人數", HUGE, ("numericOutOfRange",)),
+        (10, "numericOutOfRange-range", "台灣預計受試者人數", "1-" + HUGE,
+         ("numericRange", "numericOutOfRange")),
+        (11, "categoricalUnprovided", "臨床試驗期別", "0", ("categoricalUnprovided",)),
+        (12, "categoricalUnknown", "臨床試驗期別", "第三期", ("categoricalUnknown",)),
+        (13, "cat", "臨床試驗期別", "Phase Ⅲ", ()),
+        (14, "period-date", "試驗預計執行期間起", "2025/01/01", ()),
+        (15, "period-null", "試驗預計執行期間迄", "", ("periodEndMissing",)),
+    ]
+    check(len(COMBINATIONS) == 15, f"組合表 15 列（實際 {len(COMBINATIONS)}）")
+
+    bad = []
+    for num, label, field, sample, want_flags in COMBINATIONS:
         try:
             key = comparison_key(field, sample)
-            if not (isinstance(key, tuple) and key[0] != SPEC_GAP):
-                missing_key.append(flag)
         except AssertionError:
-            missing_key.append(flag)
-    check(not missing_key,
-          f"§9.3.3 旗標封閉集合的 {len(covered)} 個狀態全部取得比較鍵"
-          + ("" if not missing_key else f"（缺 {missing_key}）"))
+            bad.append((num, label, "dispatch raise"))
+            continue
+        if not (isinstance(key, tuple) and key[0] != SPEC_GAP):
+            bad.append((num, label, "no key"))
+            continue
+        if field in NUMERIC_FIELDS:
+            got = tuple(numeric_state(sample)[2])
+            if got != want_flags:
+                bad.append((num, label, f"flags {got} != {want_flags}"))
+    check(not bad, f"15 個組合全部取得比較鍵且旗標組合相符{'' if not bad else f'（{bad}）'}")
 
-    # 反向哨兵：表外狀態必須硬失敗，不得 fallback
+    # 第 9／10 列同鍵：超界只看 raw，numericRange 不進比較鍵
+    k9 = comparison_key("台灣預計受試者人數", HUGE)
+    k10 = comparison_key("台灣預計受試者人數", "1-" + HUGE)
+    check(k9[0] == k10[0] == "numericOutOfRange",
+          "第 9／10 列同鍵前綴 numericOutOfRange（numericRange 不進比較鍵）")
+    check(k9 != k10, "  └ 但 raw 不同故整體鍵不同（比的是 conflictText(raw)）")
+
+    # 第 2／3 列同鍵：sourceZero 不影響比較
+    check(comparison_key("台灣預計受試者人數", "0") == ("int", 0)
+          == comparison_key("台灣預計受試者人數", "00"),
+          "第 3 列與第 2 列同鍵：sourceZero 不影響「兩筆是不是同一個值」")
+
+    # 反向哨兵：表外組合必須硬失敗，不得 fallback
     orig = globals()["numeric_state"]
     globals()["numeric_state"] = lambda raw: ("someUnlistedState", None, [])
     try:
@@ -578,12 +602,13 @@ def main():
         raised = True
     finally:
         globals()["numeric_state"] = orig
-    check(raised, "表外狀態使 dispatch 硬失敗，**不得** fallback 到比 raw 或視為相等")
+    check(raised, "表外組合使 dispatch 硬失敗，**不得** fallback 到比 raw 或視為相等")
 
-    for p_ in ("CMP-035", "CMP-036", "CMP-037"):
+    for p_ in ("CMP-035", "CMP-036", "CMP-037", "CMP-038"):
         fields = oracle["cohortClassification"]["conflicting"].get(p_)
-        check(bool(fields),
-              f"{p_} 依 v0.6 §6.4.2 判為衝突，衝突欄位 {fields}（v0.5 時為 __SPEC_GAP__）")
+        check(bool(fields), f"{p_} 判為衝突，衝突欄位 {fields}")
+    check(oracle["cohortClassification"]["rawVariantsOnly"].get("CMP-039"),
+          "CMP-039（複合狀態 NFKC 等價）判為不衝突且帶 rawVariants——與 CMP-038 成對")
 
     print()
     for n in notes:

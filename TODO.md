@@ -1,12 +1,12 @@
 # TODO
 
-狀態：**M0.5 結案，規格已改寫為 v0.6，待限縮覆審。** 規格本體是 `.ai-review/plan.md` **v0.6**，驗收編號 A1–H5，動工前契約 13 項（§14）。
+狀態：**M0.5 結案，規格經第四輪限縮覆審後定案為 v0.7。** 規格本體是 `.ai-review/plan.md` **v0.7**，驗收編號 A1–H5，動工前契約 **14 項**（§14）。
 
 四項全部完成：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（B8）、B 群失敗注入 fixture、§9.3.6 不變量反例（B6）與 C4 的三個 mutation。`tests/fixtures/run_all.py` **244 條斷言全綠**（v0.6 收斂後）。
 
 本輪反驗出 **GAP-8（High）／GAP-9／GAP-10／GAP-11（Medium）／GAP-12（Low）**，全部 open，見 `.ai-review/fixture-findings-m05.md`。
 
-**v0.6 已寫好**（GAP-8～GAP-12 全部併入，fixture 同步收斂，`run_all.py` 244 條斷言全綠）。下一步：跑一輪**只審這五項與其修訂**的 `/codex-checkplan`，判定後進 M1。
+第四輪覆審（`plan-review-r4.md`／`plan-verdict-r4.md`）**Blocker 0**，但指出 v0.6 的修訂自造 3 個 High、6 個 Medium，全部已修入 **v0.7**（接受 9／部分接受 2／拒絕 0）。fixture 同步收斂，`run_all.py` **289 條斷言全綠**。下一步：**M1**（repo 鷹架與 ETL）。
 
 **M1 前不要寫 ETL 實作程式碼**（`artifact_sample/build_sample.py` 是 B8 的證據，不是實作，M1 不得沿用）。
 
