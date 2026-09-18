@@ -12,3 +12,5 @@ dist/
 
 # 暫存輸出
 tests/fixtures/_*.txt
+.venv/
+.pytest_cache/
