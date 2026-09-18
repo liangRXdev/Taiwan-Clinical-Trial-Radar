@@ -1,0 +1,8 @@
+# 凍結 fixture 的位元組不得被 git 正規化。
+# 來源 205_2.csv 是 UTF-8 with BOM + CRLF，fixture 刻意比照；core.autocrlf=true 會把
+# CRLF 存成 LF，在 Linux CI 上 checkout 出來就變 LF——「凍結」的行尾其實沒被凍結。
+tests/fixtures/a_core/input.csv            -text
+tests/fixtures/a7_identity_collision/input.csv -text
+
+# artifact 樣本是 B8 的證據（digest 對最終檔案位元組計算），任何行尾轉換都會使它失效。
+tests/fixtures/artifact_sample/out/** -text

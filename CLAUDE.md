@@ -2,7 +2,7 @@
 
 台灣藥品臨床試驗檢索站。Python ETL（build-time）+ TypeScript 靜態前端 + GitHub Actions，部署 **Cloudflare Pages**。只用 TFDA dataset 205。
 
-**現況：M0 已結案——規格過三輪覆審、十項動工前契約已封存。下一步是 M0.5（B 群 fixture ＋ 最小 artifact 樣本），不跑第四輪 prose 覆審。**
+**現況：M0.5 進行中。** A 群 fixture 已補齊 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本已產出且 **B8 四條全綠**。本輪反驗出 GAP-8（High）／GAP-9／GAP-10（Medium），**三者皆 open，須進 v0.6**。待辦是 B 群 fixture 與 C4 mutation。不跑第四輪 prose 覆審。
 
 **唯一具規範效力的規格是 `.ai-review/plan.md` v0.5，動工時直接依 §14 的十項契約表實作，不要重新推導。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2–v0.4 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
 
@@ -151,7 +151,8 @@ v0.1 曾寫「`0` 不可自動視為 missing」，那條**只對數值欄位成�
 ## 文件慣例
 
 - `.ai-review/plan.md` — **唯一 normative 規格**（v0.5）。驗收條件有可引用編號 A1–H5，**十項動工前契約見 §14**，`/codex-review` 的規格符合度稽核以它為基準。
-- `.ai-review/fixture-findings-a.md` — A 群 fixture 反驗規格的結果（7 個洞）。
+- `.ai-review/fixture-findings-a.md` — A 群 fixture 反驗規格的結果（7 個洞，全部結案）。
+- `.ai-review/fixture-findings-m05.md` — M0.5 的結果（GAP-8／9／10，**全部 open**）。
 - `.ai-review/plan-review-*.md` — Codex 原始輸出，原封不動落檔。
 - `.ai-review/plan-verdict-*.md` — 逐項判定（接受／部分接受／拒絕）。
 - `Taiwan-Clinical-Trial-Radar-spec.md` — **歷史文件，無規範效力**。不要引用它做實作或驗收。
@@ -159,6 +160,8 @@ v0.1 曾寫「`0` 不可自動視為 missing」，那條**只對數值欄位成�
 - **raw source 不手動修改**；修正規則一律以版本控制的 transformation + 測試實作。
 - 規格改完要**再審一輪，且下一輪只審「修訂本身」**（走 `/codex-checkplan`）。第一輪 56 項裡有 11 項是 v0.2 修訂自造的洞；第二輪 54 項裡又有一批是 v0.3 修訂自造的（`latestAmbiguous` 沒有封閉欄位集合、未來日期會支配卡片、C4 第一個 mutation 是合規行為、驗收條件反過來創造 normative 規則）。**修訂會製造新洞，這是規律不是意外。**
 - 三輪的 Blocker 走勢是 **2 → 0 → 1**，第三輪那個是 v0.4 修 N8 時自造的循環定義。第三輪已**限縮**只審架構級變更。
-- **規格審到某個程度後，改用「寫 fixture 反驗規格」比再讀一遍 prose 有效。** A 群 fixture 找到 7 個洞，包含一條（A8）**數學上無法滿足**的驗收條件。故不跑第四輪，改走 M0.5。
+- **規格審到某個程度後，改用「寫 fixture 反驗規格」比再讀一遍 prose 有效。** A 群 fixture 找到 7 個洞，包含一條（A8）**數學上無法滿足**的驗收條件。故不跑第四輪，改走 M0.5。M0.5 又找到 3 個。
+- **同一份規格裡的兩張清單要對差集。** GAP-8 是 §6.4.2 的比較鍵表（10 個語意狀態）漏了 §9.3.3 旗標封閉集合裡的三個——兩張表都在 plan.md 裡，三輪 prose 覆審都沒抓到。**prose 審查不會去對兩張表的差集，寫 fixture 會。**
+- **「兩次跑結果相同」證明的是決定性，不是無循環。** B8 另加 B8-1b：從已寫入版本欄位的最終檔案反算須得同值，那才是固定點存在的證據。同理 B8-3 要先斷言互換前後 payload hash 多重集合相同，否則證不到邏輯檔名有作用。
 - **Codex 沒有資料可量，量得出來的東西要自己量。** 兩輪都沒抓到「搜尋範圍 × payload 預算」的硬矛盾與 protocol 欄位的近似重複／垃圾值，那三項都是本機實測才發現的。
 - Commit message：`type(scope): 說明`，type 為 `feat`／`fix`／`refactor`／`docs`／`chore`；資料更新用 `data: update TFDA clinical trial dataset YYYY-MM-DD`。

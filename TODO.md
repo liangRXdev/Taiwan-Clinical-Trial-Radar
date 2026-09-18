@@ -1,10 +1,12 @@
 # TODO
 
-狀態：**M0 結案——規格已過三輪覆審，十項動工前契約已封存。** 規格本體是 `.ai-review/plan.md` v0.5，驗收編號 A1–H5。
+狀態：**M0.5 進行中。** 規格本體是 `.ai-review/plan.md` v0.5，驗收編號 A1–H5。
 
-下一步是 **M0.5**：B 群 fixture ＋ 產出最小 artifact 樣本，實證契約可實作。**這取代第四輪 prose 覆審。**
+已完成：A 群 fixture 補齊 v0.5 新案例（73 列／45 Trial）、`check_a_core.py` 改用 semantic comparison key、**最小 artifact 樣本（B8 全綠）**。本輪反驗出 **GAP-8（High）／GAP-9／GAP-10（Medium）**，見 `.ai-review/fixture-findings-m05.md`。
 
-**M0 未結案前不要寫實作程式碼。**
+下一步：B 群 fixture ＋ C4 mutation，然後把三個 open gap 併成 v0.6 送一輪限縮覆審。
+
+**M1 前不要寫 ETL 實作程式碼**（`artifact_sample/build_sample.py` 是 B8 的證據，不是實作，M1 不得沿用）。
 
 ---
 
@@ -46,13 +48,23 @@
 
 ## M0.5 — B 群 fixture ＋ 最小 artifact 樣本（取代第四輪 prose 覆審）
 
-理由：A 群的經驗是「寫 fixture 比再讀一遍 prose 更能找出問題」——它抓到 7 個洞，包含一條**數學上無法滿足**的驗收條件。十項契約已封存，現在要證明它們可實作。
+理由：A 群的經驗是「寫 fixture 比再讀一遍 prose 更能找出問題」——它抓到 7 個洞，包含一條**數學上無法滿足**的驗收條件。十項契約已封存，現在要證明它們可實作。本輪又抓到 3 個。
 
-- [ ] 補 A 群 fixture 缺的 v0.5 新案例：空白-only protocol、`buildDate` 當日與 +1 日邊界、`numericRange` 各型（嚴格範圍／`min>max`／超界）、`suspectedTestRow` 的 `TEST` 值型
-- [ ] `check_a_core.py` 的 [2] 分類改用 §6.4.2 的 semantic comparison key（目前仍是 v0.4 的「比正規化 raw」，對本 fixture 結果相同但規則已變）
-- [ ] **產出最小 artifact 樣本**：`manifest.json` ＋ `trials-index` ＋ 一個 shard，實證 §9.3.2 的 `datasetVersion`／`artifactDigest` 計算可實作、無循環（對應驗收 B8）
+- [x] 補 A 群 fixture 缺的 v0.5 新案例：空白-only protocol（ASCII 空白／U+3000 各一）、`buildDate` 當日與 +1 日邊界、`numericRange` 各型（嚴格範圍／`min>max`／超界／約略值不推論）、前導零、`suspectedTestRow` 的 `TEST` 值型、期間端不可解析與缺值。**50 → 73 列、29 → 45 Trial**
+- [x] `check_a_core.py` 的 [2] 分類改用 §6.4.2 的 semantic comparison key；[4] 改用 §6.6.3 的完整 lexical grammar（八類互斥、加總須等於 `列數 × 2`）
+- [x] **產出最小 artifact 樣本**（`tests/fixtures/artifact_sample/`）：7 個非 manifest 檔 ＋ `manifest.json`，**B8 四條全綠**。關鍵是 B8-1b——從已寫入版本欄位的最終檔案反算得同一個 `datasetVersion`，即循環被解開的操作型證據
 - [ ] B 群 fixture：§9.5 每個 error code 的注入、§9.3.6 每條不變量的反例、promotion 各失敗點
-- [ ] C 群的三個獨立 mutation（C4）與 semantic comparison key 的逐型別驗證（C5）
+- [ ] C 群的三個獨立 mutation（C4）
+
+### 本輪反驗出的 3 個洞（全部 open，須進 v0.6）
+
+| # | 嚴重度 | 章節 | 一句話 |
+|---|---|---|---|
+| GAP-8 | **High** | §6.4.2 | 比較鍵表漏了 `numericRangeInvalid`／`numericOutOfRange`／`categoricalUnknown`，同日兩列處於這些狀態時衝突與否無法從規格導出。觸發於 `CMP-035`／`CMP-036`／`CMP-037` |
+| GAP-9 | Medium | §6.6.3 | 「可表示範圍」沒有序位，與「第一個命中者決定結果」字面矛盾；單端超界的範圍值行為未定義 |
+| GAP-10 | Medium | §9.3.5／F1 | `stats.json` 的 facet 名單未封閉（E2 的 oracle 沒來源），且它在 Tier 0 卻沒計入 F1 的 1,236 KiB 基線 |
+
+展開見 `.ai-review/fixture-findings-m05.md`。**GAP-8 修訂後 `check_a_core.py` 的 [8] 段會轉紅，那是預期的**，改 oracle 時一併移除。
 
 ## M1 — repo 鷹架與 ETL（驗收 A／B／C 群）
 
@@ -73,7 +85,7 @@
 
 ### 測試（fixture 驅動，不連網）
 
-A 群 fixture **已建立**（`tests/fixtures/a_core/`、`a7_identity_collision/`），以下是待寫的**測試**本身：
+A 群 fixture **已建立並補齊 v0.5 案例**（`tests/fixtures/a_core/` 73 列、`a7_identity_collision/` 5 列），以下是待寫的**測試**本身：
 
 - [ ] A1 fingerprint → trialId 的 group membership。「不應合併」反例用 §6.2 **不折疊**的差異（連字號／空格／括號閉合），**不可**用大小寫或全半形（那些會折疊，屬 A7）
 - [ ] A2 每個案例附 oracle；必含 ≥2 筆完全相同空 protocol、≥3 組同日衝突、≥1 組同日正規化後全同、**≥1 組同日僅空白／全半形差異（須判為不衝突）**、≥1 個 `nearDuplicateGroup`、≥1 筆 `protocolNonIdentifier`、**四類日期異常各 ≥1**（不可解析／空值／未來日期／end<start）

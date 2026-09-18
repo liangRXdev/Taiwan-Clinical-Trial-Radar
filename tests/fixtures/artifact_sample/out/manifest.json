@@ -1,0 +1,53 @@
+{
+ "schemaVersion": 1,
+ "datasetVersion": "e24fa767c66491c4",
+ "artifactDigest": "5206eb1199f518af36ba95745805bcf71d2f7a990220bb163aeb5ac4970e499d",
+ "sourceDatasetId": 205,
+ "sourceUpdatedAt": "2026-05-01",
+ "fetchedAt": "2026-09-18T01:00:00Z",
+ "builtAt": "2026-09-18T01:02:03Z",
+ "buildDate": "2026-09-18",
+ "sourceSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+ "trialCount": 2,
+ "recordCount": 4,
+ "bootstrap": false,
+ "files": {
+  "trialsIndex": {
+   "path": "trials-index.d9760ffd4563b280.json",
+   "bytes": 3382,
+   "gzipBytes": 1042
+  },
+  "stats": {
+   "path": "stats.dab349591f9bf4e7.json",
+   "bytes": 511,
+   "gzipBytes": 278
+  },
+  "searchShortAll": {
+   "path": "search-short-all.ab84fb9fc1e74c20.json",
+   "bytes": 936,
+   "gzipBytes": 443
+  },
+  "searchLongLatest": {
+   "path": "search-long-latest.7f8e217cf937682e.json",
+   "bytes": 574,
+   "gzipBytes": 276
+  },
+  "searchLongAll": {
+   "path": "search-long-all.7f8e217cf937682e.json",
+   "bytes": 574,
+   "gzipBytes": 276
+  },
+  "recordShards": {
+   "75": {
+    "path": "records/75.3f359ba3bf706596.json",
+    "bytes": 2909,
+    "gzipBytes": 641
+   },
+   "83": {
+    "path": "records/83.6ce4da9c03eb9151.json",
+    "bytes": 2945,
+    "gzipBytes": 671
+   }
+  }
+ }
+}

@@ -329,3 +329,80 @@ A 群的經驗是「寫 fixture 比再讀一遍 prose 更能找出問題」。�
 2. `check_a_core.py` 的分類改用 semantic comparison key
 3. **產出最小 artifact 樣本**（manifest ＋ trials-index ＋ 一個 shard），實證 §9.3.2 的 digest 計算無循環（驗收 B8）
 4. B 群 fixture：每個 error code 的注入、每條不變量的反例、promotion 各失敗點
+
+---
+
+## 2026-09-18（同日，下午）— M0.5 前半：A 群補案例 ＋ 最小 artifact 樣本
+
+不跑第四輪 prose 覆審，改用「把 v0.5 新增的契約真的做出來」驗規格。兩件事：把 A2 要求
+但尚未存在的案例補進 fixture，以及照 §9.3.2 的文字產出一份合規 artifact。
+
+### 產出
+
+| 項目 | 前 | 後 |
+|---|---:|---:|
+| `a_core` 列數 | 50 | **73** |
+| `a_core` Trial 數 | 29 | **45** |
+| `check_a_core.py` 斷言 | v0.4 規則 | v0.5（semantic comparison key ＋ 完整數值文法） |
+| artifact 樣本 | 無 | **7 個非 manifest 檔 ＋ manifest.json，B8 四條全綠** |
+
+新增案例：空白-only protocol（ASCII 空白 ×3、U+3000 各一）、`buildDate` 當日與 +1 日邊界、
+嚴格範圍（`至`／`-` 各一）、`min > max`、超界（2^53）、前導零 `026`、約略值 `約400`／`至少480`、
+`TEST` 值型、期間起不可解析、期間迄缺值、C5 的四個比較鍵型別案例。
+
+### 又抓到 3 個規格洞（1 High、2 Medium）
+
+| # | 嚴重度 | 章節 | 一句話 |
+|---|---|---|---|
+| GAP-8 | **High** | §6.4.2 | 比較鍵表漏了三個語意狀態 |
+| GAP-9 | Medium | §6.6.3 | 「可表示範圍」沒有序位，與「第一個命中者決定結果」字面矛盾 |
+| GAP-10 | Medium | §9.3.5／F1 | `stats.json` 的 facet 名單未封閉，且它在 Tier 0 卻沒計入 F1 基線 |
+
+**GAP-8 是本輪最值得記的。** §6.4.2 是 v0.5 才新增、且是三項封存契約之一，表格看起來很完整
+（10 列型別／語意狀態），但對照 §9.3.3 的 field-scoped 旗標封閉集合就會發現少了
+`numericRangeInvalid`、`numericOutOfRange`、`categoricalUnknown` 三個。**兩份清單都在同一份規格裡，
+只是沒有人對過。** 三輪 Codex 覆審也沒抓到——prose 審查不會去對兩張表的差集，寫 fixture 會。
+
+後果不是理論的：同日兩列皆為 `40-20` 與 `50-30`（都是順序異常）時，衝突與否無法從規格導出。
+比 typed（皆 null）→ 判不衝突並任取一筆，正是第三輪否決 GAP-5 建議的理由（隱藏異常）；
+比 `conflictText(raw)` → 判衝突。兩種都能自圓其說，而 C5 的「逐型別驗證」因此只寫得出 4 個型別。
+
+fixture 為此各加一組同日兩列（`CMP-035`／`CMP-036`／`CMP-037`），oracle 的 `latestAmbiguous`
+與 `conflictFields` 填 `__SPEC_GAP__`，`check_a_core.py` 的 `[8]` 段獨立列出並斷言
+「未定義狀態集合恰為這三個」。**規格補上後這條會轉紅，那是預期的。**
+
+### B8 的關鍵那條
+
+B8 要求「同一輸入兩次 build 得到相同 `datasetVersion`（證明無循環定義）」。兩次相同只證明
+決定性，證不到無循環——所以另加一條 **B8-1b**：
+
+> 從**已寫入 `datasetVersion` 的最終檔案**移除 top-level `datasetVersion` 後重算，
+> 必須得到同一個 `datasetVersion`。
+
+這才是固定點存在的操作型證據。v0.4 的寫法連一份合規 artifact 都產不出來；v0.5 產得出來且自我一致。
+
+B8-3（兩個檔案內容互換 → digest 改變）也補了反向哨兵：**斷言互換前後的 payload hash 多重集合相同**。
+沒有這條的話，「互換後 digest 改變」也可能只是因為兩個檔案內容本來就不同，證不到
+「§9.3.2 步驟 3 的邏輯檔名真的有作用」。
+
+### 計數紀律再一次應驗
+
+`periodEndMissing` 的正確答案是 `["nonid-test", "pd031-missing"]`，不是只有為該案例設計的
+`pd031-missing`——`nonid-test`（上游測試列）的期間兩端本來就都是空的。這與第一輪把
+`排除條件="N/A"` 寫成 1 筆（實際 3 筆）是同一種錯。
+
+處置：`numericStateCounts` 改為**八類互斥且加總必須等於 `列數 × 2` = 146** 的形式。
+漏數一筆會直接讓總和對不上而失敗，不會悄悄少一筆。
+
+### 樣本不是實作
+
+`artifact_sample/build_sample.py` 沒有 identity 收斂、cohort 判定或 sentinel 分型；
+兩個 Trial（`WS-003`／`PH-004`）的模型內容是手寫的。只有 canonical serialization、
+`trialId`／`recordId`、`datasetVersion`、`artifactDigest` 是照規格算的，因為那正是 B8 要證明
+可實作的部分。**M1 不得沿用它當實作**——規格要能被兩份獨立的程式碼各自寫出來才算寫清楚。
+
+### 下一步
+
+1. B 群 fixture：§9.5 每個 error code 的注入、§9.3.6 每條不變量的反例、promotion 各失敗點
+2. C4 的三個獨立 mutation
+3. GAP-8／9／10 併成 v0.6，跑一輪**只審這三項與其修訂**的 `/codex-checkplan`
