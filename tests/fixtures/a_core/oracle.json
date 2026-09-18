@@ -1079,12 +1079,17 @@
     "cmp035-b"
    ],
    "latestCohortSize": 2,
-   "latestAmbiguous": "__SPEC_GAP__",
-   "conflictFields": "__SPEC_GAP__",
+   "latestAmbiguous": true,
+   "conflictFields": [
+    "台灣預計受試者人數"
+   ],
    "nearDuplicateGroup": null,
    "protocolNonIdentifier": false,
-   "_purpose": "§6.4.2 的比較鍵表未涵蓋 numericRangeInvalid。同日兩列 \"40-20\" vs \"50-30\" 皆為 numericRangeInvalid 但 raw 不同，衝突與否無法從規格導出。",
-   "_gap": "GAP-8"
+   "_purpose": "v0.5 §6.4.2 的比較鍵表未涵蓋 numericRangeInvalid。同日兩列 \"40-20\" vs \"50-30\" 皆為 numericRangeInvalid 但 raw 不同，衝突與否無法從規格導出。",
+   "displayFieldsAbsent": [
+    "台灣預計受試者人數"
+   ],
+   "_resolved": "v0.6 §6.4.2 補上該語意狀態的比較鍵 (旗標名, conflictText(raw))，兩列 raw 不同故判為衝突，該欄位在 displayFields 中完全省略。"
   },
   {
    "label": "CMP-036",
@@ -1101,12 +1106,17 @@
     "cmp036-b"
    ],
    "latestCohortSize": 2,
-   "latestAmbiguous": "__SPEC_GAP__",
-   "conflictFields": "__SPEC_GAP__",
+   "latestAmbiguous": true,
+   "conflictFields": [
+    "臨床試驗期別"
+   ],
    "nearDuplicateGroup": null,
    "protocolNonIdentifier": false,
-   "_purpose": "§6.4.2 的比較鍵表未涵蓋 categoricalUnknown。同日兩列 期別 \"第三期\" vs \"Phase III\" 皆為 categoricalUnknown（typed null）但語意上是不同的來源文字。",
-   "_gap": "GAP-8"
+   "_purpose": "v0.5 §6.4.2 的比較鍵表未涵蓋 categoricalUnknown。同日兩列 期別 \"第三期\" vs \"Phase III\" 皆為 categoricalUnknown（typed null）但語意上是不同的來源文字。",
+   "displayFieldsAbsent": [
+    "臨床試驗期別"
+   ],
+   "_resolved": "v0.6 §6.4.2 補上該語意狀態的比較鍵 (旗標名, conflictText(raw))，兩列 raw 不同故判為衝突，該欄位在 displayFields 中完全省略。"
   },
   {
    "label": "CMP-037",
@@ -1123,12 +1133,17 @@
     "cmp037-b"
    ],
    "latestCohortSize": 2,
-   "latestAmbiguous": "__SPEC_GAP__",
-   "conflictFields": "__SPEC_GAP__",
+   "latestAmbiguous": true,
+   "conflictFields": [
+    "全球預計受試者人數"
+   ],
    "nearDuplicateGroup": null,
    "protocolNonIdentifier": false,
-   "_purpose": "§6.4.2 的比較鍵表未涵蓋 numericOutOfRange。同日兩列 2^53 vs 2^53+1 皆超界、typed 皆 null，但兩個 raw 是不同的來源值。",
-   "_gap": "GAP-8"
+   "_purpose": "v0.5 §6.4.2 的比較鍵表未涵蓋 numericOutOfRange。同日兩列 2^53 vs 2^53+1 皆超界、typed 皆 null，但兩個 raw 是不同的來源值。",
+   "displayFieldsAbsent": [
+    "全球預計受試者人數"
+   ],
+   "_resolved": "v0.6 §6.4.2 補上該語意狀態的比較鍵 (旗標名, conflictText(raw))，兩列 raw 不同故判為衝突，該欄位在 displayFields 中完全省略。"
   }
  ],
  "nearDuplicateGroups": {
@@ -1323,8 +1338,8 @@
    "problem": "比較鍵表涵蓋 10 個型別／語意狀態，但 §9.3.3 的 field-scoped 旗標封閉集合中有三個狀態沒有對應的比較鍵：`numericRangeInvalid`、`numericOutOfRange`、`categoricalUnknown`。",
    "consequence": "同日兩列皆處於這三種狀態之一且 raw 不同時（fixture 各給一組），衝突與否無法從規格導出。實作可能任選一種：若比 typed（皆 null）→ 判不衝突並任取一筆 raw，那正是第三輪否決 GAP-5 建議的理由（隱藏異常）；若比 conflictText → 判衝突。兩種都能自圓其說，規格必須指定一種，否則 A3 的跨排列一致性與 C5 的逐型別驗證都無法寫。",
    "proposedFix": "比照已定案的 numericUnparsed／numericImplausible，三者皆採 (旗標名, conflictText(raw))：同旗標且同正規化 raw 才相等。理由一致——這三種狀態的 typed 都是 null，唯一有資訊的是 raw 原文，而 UI 本來就要顯示 raw 加異常提示。",
-   "resolution": null,
-   "status": "open"
+   "resolution": "已修：v0.6 §6.4.2 補上三列，皆採 (旗標名, conflictText(raw))；另要求以窮盡 dispatch 實作，遇表外狀態硬失敗不 fallback（契約 #11）。CMP-035／036／037 三組改判為衝突。",
+   "status": "resolved"
   },
   {
    "id": "GAP-9",
@@ -1334,14 +1349,14 @@
    "problem": "解析順序表有 6 個編號序位並聲明「第一個命中者決定結果」，但「可表示範圍」是表後的獨立段落，沒有序位。純整數 9007199254740992 先命中序 2 得 typed 值，再被範圍檢查改為 null，與「第一個命中者決定結果」字面矛盾。",
    "consequence": "兩個實務問題無法從規格導出：(a) 超界時 `sourceZero`／`numericRange` 等序位旗標是否保留，還是只留 `numericOutOfRange`；(b) 範圍值只有單一端點超界（如 `1-9007199254740992`）時，旗標是 [numericRange, numericOutOfRange] 還是只有 numericOutOfRange，typed 是否整個為 null。",
    "proposedFix": "把可表示範圍檢查寫成解析順序表的一個後置步驟（序 2/3 命中後套用），並明定：超界時 typed 一律為 null、旗標為該序位旗標 ＋ `numericOutOfRange`（範圍值保留 `numericRange` 以說明來源形狀）、分級為 warning。",
-   "resolution": null,
-   "status": "open",
-   "_note": "check_a_core.py 目前依 proposedFix 實作（range 超界回傳 [numericRange, numericOutOfRange]），但 fixture 未含單端超界的範圍值——規格定案後再補一列。"
+   "resolution": "已修：v0.6 §6.6.3 拆為兩階段，可表示範圍檢查為後置步驟；明定單端超界時**整個** typed 為 null、旗標為 numericRange ＋ numericOutOfRange、enroll 歸「未提供」。",
+   "status": "resolved",
+   "_note": "fixture 仍未含單端超界的範圍值——v0.6 已定案，可補；列為 M1 撰寫 C2 測試時一併加。"
   }
  ],
- "_status": "A 群 fixture 已補齊 v0.5 新案例（73 列／45 Trial）：空白-only protocol、buildDate 當日與 +1 日邊界、numericRange 各型（嚴格範圍／min>max／超界／約略值不推論）、前導零、suspectedTestRow 的 TEST 值型、期間端不可解析與缺值、C5 的四個比較鍵型別案例。GAP-1～GAP-7 全部結案；本輪新增 **GAP-8（High）與 GAP-9（Medium）**，兩者皆 open，須進 v0.6。尚未涵蓋：B 群（ETL 失敗注入、promotion 邊界）、C4 的三個 mutation、D／E／F／G／H 群、E6／F3 的 22,490 字元長文字 fixture。",
+ "_status": "對齊規格 v0.6。GAP-1～GAP-9 全部結案；GAP-10（stats facet 名單與 F1 基線）、GAP-11（§9.3.6 評估順序）、GAP-12（§9.6 有理數比較）亦已於 v0.6 修訂，其驗證分別在 artifact_sample/ 與 b_failures/。尚未涵蓋：numericRange 單端超界、D／E／F／G／H 群、E6／F3 的長文字 fixture。",
  "cohortClassification": {
-  "_about": "同日 cohort（size ≥ 2）依 §6.4.2 semantic comparison key 的分類。protocol 依 identityNormalize 後非空者成組；空與空白-only 走 H: 分支不在此列。dateUnknown 的 Trial 以全部 record 為 cohort（DT-018／DT-019）。",
+  "_about": "同日 cohort（size ≥ 2）依 §6.4.2 semantic comparison key 的分類。protocol 依 identityNormalize 後非空者成組；空與空白-only 走 H: 分支不在此列。dateUnknown 的 Trial 以全部 record 為 cohort（DT-018／DT-019）。 v0.6 §6.4.2 補上 numericRangeInvalid／numericOutOfRange／categoricalUnknown 三個比較鍵，CMP-035／036／037 自 __SPEC_GAP__ 改判為衝突。",
   "conflicting": {
    "BIG-001": [
     "台灣預計受試者人數",
@@ -1361,6 +1376,15 @@
    ],
    "CMP-034": [
     "台灣預計受試者人數"
+   ],
+   "CMP-035": [
+    "台灣預計受試者人數"
+   ],
+   "CMP-036": [
+    "臨床試驗期別"
+   ],
+   "CMP-037": [
+    "全球預計受試者人數"
    ]
   },
   "rawVariantsOnly": {
@@ -1382,8 +1406,7 @@
   "_excluded": {
    "BD-024": "cohort size 1——+1 日那列為 dateFuture，不參與 latest 選擇",
    "DT-015／DT-016／DT-017": "cohort size 1——另一列日期不可採計",
-   "SAME-010": "cohort size 1——兩列日期不同",
-   "CMP-035／CMP-036／CMP-037": "比較鍵未定義，見 specGapStates"
+   "SAME-010": "cohort size 1——兩列日期不同"
   }
  },
  "comparisonKeyCases": [
@@ -1424,37 +1447,29 @@
    "field": "台灣預計受試者人數",
    "a": "40-20",
    "b": "50-30",
-   "expect": "undefined",
-   "_gap": "GAP-8"
+   "expect": "conflict",
+   "_why": "兩值皆 numericRangeInvalid、raw 不同 → (旗標名, conflictText(raw)) 不同 → 衝突。它們是兩筆不同的來源錯誤，任取一筆呈現等於替上游決定哪一筆才算數。"
   },
   {
    "label": "C5-6 categoricalUnknown 兩值",
    "field": "臨床試驗期別",
    "a": "第三期",
    "b": "Phase III",
-   "expect": "undefined",
-   "_gap": "GAP-8"
+   "expect": "conflict",
+   "_why": "兩值皆 categoricalUnknown、raw 不同 → 衝突。typed 皆 null 但來源文字不同。"
   },
   {
    "label": "C5-7 numericOutOfRange 兩值",
    "field": "全球預計受試者人數",
    "a": "9007199254740992",
    "b": "9007199254740993",
-   "expect": "undefined",
-   "_gap": "GAP-8"
+   "expect": "conflict",
+   "_why": "兩值皆 numericOutOfRange、raw 不同 → 衝突。"
   }
  ],
  "specGapStates": {
-  "undefinedComparisonKey": [
-   "categoricalUnknown",
-   "numericOutOfRange",
-   "numericRangeInvalid"
-  ],
-  "affectedCohorts": [
-   "CMP-035",
-   "CMP-036",
-   "CMP-037"
-  ],
-  "_about": "§6.4.2 的比較鍵表列了 10 個型別／語意狀態，但 §6.6 與 §9.3.3 的旗標封閉集合有 3 個狀態不在表內。fixture 各給一組同日兩列使其可觸發，避免停留在紙面推論。"
+  "undefinedComparisonKey": [],
+  "affectedCohorts": [],
+  "_about": "v0.5 時 §6.4.2 有三個狀態沒有比較鍵，本檔曾以 __SPEC_GAP__ 標示。v0.6 已補齊（GAP-8 結案），故兩份清單為空。check_a_core.py 的 [8] 段改為驗證 dispatch 的**窮盡性**：§9.3.3 旗標封閉集合的每個狀態都取得比較鍵，且表外狀態硬失敗不 fallback。"
  }
 }

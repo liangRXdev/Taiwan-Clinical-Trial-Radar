@@ -1,8 +1,8 @@
-# Taiwan Clinical Trial Radar — 規格 v0.5（consolidated）
+# Taiwan Clinical Trial Radar — 規格 v0.6（consolidated）
 
 > **這是唯一具規範效力的規格。** `Taiwan-Clinical-Trial-Radar-spec.md` v0.1 與本檔 v0.2–v0.4 均降為歷史文件，**不再具 normative 效力**。
 > 依據：2026-09-18 dataset 205 實測 ＋ Codex 三輪覆審（`plan-review-r1/r2/r3.md`、`plan-verdict-r1/r2/r3.md`）＋ A 群 fixture 反驗（`fixture-findings-a.md`）。
-> 狀態：**十項動工前契約已封存。** 下一步不是第四輪 prose 覆審，而是 B 群 fixture ＋ 最小 artifact 樣本，實證這些契約可實作。
+> 狀態：**13 項動工前契約已封存。** M0.5 已完成——A 群 fixture 補齊、最小 artifact 樣本產出、B 群失敗注入與 §9.3.6／C4 反例齊備（`tests/fixtures/run_all.py` 240 條斷言）。那一輪撞出 GAP-8～GAP-12，已併入本版。
 
 ---
 
@@ -183,6 +183,8 @@
 
 因此定義 **semantic comparison key**：
 
+**本表必須涵蓋 §9.3.3 field-scoped 旗標封閉集合的每一個狀態**（`rawVariants` 除外——它是比較的**結果**不是輸入）。v0.5 漏了三個（`numericRangeInvalid`／`numericOutOfRange`／`categoricalUnknown`），兩張表都在本文件內卻沒有對過差集。**修改任一張表時必須同時檢查另一張。**
+
 | 欄位型別／語意狀態 | 比較鍵 |
 |---|---|
 | 文字欄位 | `conflictText(raw)` |
@@ -191,12 +193,19 @@
 | 數值缺值 | `("numericMissing",)`——只有同為缺值才相等 |
 | 數值無法解析 | `("numericUnparsed", conflictText(raw))` |
 | 數值不合理 | `("numericImplausible", conflictText(raw))` |
+| **數值區間順序異常** | `("numericRangeInvalid", conflictText(raw))` |
+| **數值超出可表示範圍** | `("numericOutOfRange", conflictText(raw))` |
 | 分類 sentinel | `("unprovided",)` |
+| **分類非合法值** | `("categoricalUnknown", conflictText(raw))` |
 | 合法分類 | `("cat", canonical typed value)` |
 | 日期欄位（可解析） | `("date", ISO 日期)` |
 | 日期欄位（不可解析／缺值） | `(旗標名, conflictText(raw))` |
 
 **比較鍵相同即不衝突**，即使 raw 不同。
+
+**三個新增狀態為什麼採 `(旗標名, conflictText(raw))`**：它們的 typed 都是 `null`，唯一帶資訊的是 raw 原文，而 UI 本來就要顯示 raw 加異常提示。若改比 typed（皆 `null`）會判為不衝突並任取一筆 raw——那正是第三輪否決 GAP-5 建議的理由。`40-20` 與 `50-30` 都是順序異常，但它們是兩筆**不同的來源錯誤**，任取一筆呈現等於替上游決定哪一筆才算數。採本規則後這三組**皆判為衝突**，與「寧可漏報不可誤報」一致。
+
+**比較鍵的封閉性檢查**：實作須有一個窮盡的 dispatch（例如對狀態列舉做 exhaustive match），**遇到未涵蓋的狀態必須硬失敗**，不得 fallback 到「比 raw」或「視為相等」。未涵蓋的狀態是規格缺口，靜默 fallback 會把缺口變成一個看不見的行為。
 
 #### 6.4.3 `rawVariants`：欄位層級旗標
 
@@ -316,7 +325,11 @@ index 只留 `recordCount` 與 `latestCohortCount` 兩個計數；§9.3.6 的不
 
 `全球預計受試者人數`、`台灣預計受試者人數`。
 
-**解析一律先 `nfkc(strip(raw))`**，然後**依下列順序**比對，第一個命中者決定結果（固定順序使每個值只有一個分類）：
+**解析分兩階段**：先依下表**依序**比對（第一個命中者決定分類），再套用**後置的可表示範圍檢查**。
+
+v0.5 把「可表示範圍」寫成表後的獨立段落而沒有序位，與「第一個命中者決定結果」字面矛盾——`9007199254740992` 先命中序 2 得 typed 值，再被範圍檢查改成 `null`。分成兩階段即解開。
+
+**階段一**：對 `nfkc(strip(raw))` 依下列順序比對，第一個命中者決定分類（固定順序使每個值只有一個分類）：
 
 | 序 | 條件（對 `nfkc(strip(raw))`） | typed | 旗標 | UI | 分級 |
 |---:|---|---|---|---|---|
@@ -329,7 +342,16 @@ index 只留 `recordCount` 與 `latestCohortCount` 兩個計數；§9.3.6 的不
 
 **前導零**：實測有 3 筆（`026`、`024`、`08`）。typed 為 26／24／8，但**raw 一律顯示**——顯示 typed 就是改寫來源。
 
-**可表示範圍**：typed 整數（含 range 的 min／max）必須落在 `0 … 2^53-1`（JSON number 可精確表示的整數上限）。超界 → typed `null`、旗標 `numericOutOfRange`、warning、raw 照顯示，**不得輸出失真數字**。實測兩欄最大值為 100,000 與 4,236，目前無任何值超界。
+**階段二（後置的可表示範圍檢查）**：只在階段一命中**序 2 或序 3**（即產生了 typed 整數）時套用。typed 整數（含 range 的 `min`／`max`）必須落在 `0 … 2^53-1`（JSON number 可精確表示的整數上限）。
+
+| 情形 | typed | 旗標 | 分級 | `enroll` 篩選 |
+|---|---|---|---|---|
+| 序 2 命中且整數超界 | `null` | `numericOutOfRange` | **warning** | 歸「未提供」 |
+| 序 3 命中且**任一端**超界 | `null`（**整個範圍**，不保留任何一端） | `numericRange` ＋ `numericOutOfRange` | **warning** | 歸「未提供」 |
+
+**單端超界時整個 typed 為 `null`，不得保留 `{min: 1, max: null}`**——半個區間無法參與 §8.4 的重疊判定，而一個「有 min 沒有 max」的物件會讓前端與篩選各自猜測邊界。保留 `numericRange` 旗標是為了讓 UI 說得出「來源是一個區間，但數值超出可表示範圍」，與「來源根本不是區間」可區分。
+
+raw 一律照顯示，**不得輸出失真數字**。實測兩欄最大值為 100,000 與 4,236，目前無任何值超界——**正因為恆不觸發，更容易被省略或寫錯**。
 
 **只解析嚴格範圍，不從約略值推論。** 實測回收量：`台灣預計受試者人數` **1,347／1,705** 個非純整數值（7.2% of 全部 18,736）、`全球預計受試者人數` **356／766**，且 **0 筆 `min > max`**。維持 `numericUnparsed` 的包括 `約400`、`至少480`、`148(最多266)`、`約26-30(競爭)`、`240=90+150`、`接受本品治療之病人`，以及 `ˋ40`（注音符號 `ˋ` U+02CB 誤打，9 筆）。
 
@@ -622,7 +644,22 @@ v0.4 同時要求「每個非 manifest 檔案內含 `datasetVersion`」與「`da
 }
 ```
 
-每個 facet 的 `buckets` 計數 + `unprovided` + `conflicted` **必須等於** `denominators.trials`。（註：`enroll` 因區間重疊可跨 bucket，故 `enroll` **不列為 facet**，只作篩選維度；facet 僅含互斥維度。）
+**facet 名單為封閉集合，恰為三個**：`phase`、`scale`、`applicant`。
+
+| §8.4 維度 | 是否為 facet | 理由 |
+|---|---|---|
+| `phase` | **是** | 每個 Trial 恰好落在一個值、未提供或不一致 |
+| `scale` | **是** | 同上 |
+| `applicant` | **是** | 同上 |
+| `enroll` | 否 | 區間重疊可跨 bucket（§6.6.3 的 `numericRange`），計數會重複，`buckets + unprovided + conflicted` 的等式不成立 |
+| `period` | 否 | §8.4 是**重疊**語意，同一 Trial 可落入多個期間區間，理由同 `enroll` |
+| `updated` | 否 | 值域是連續日期而非固定 bucket，bucket 切法屬 UI 決策；統計卡改以「全站 `sourceUpdatedAt`」單一數字呈現（§7.2） |
+
+**E2 的統計卡 oracle 以本清單為唯一來源**：DOM 中出現不在本清單的統計卡必須使測試失敗；本清單中缺少的也必須失敗（雙向對帳）。新增 facet 須改本節，不得只改前端。
+
+每個 facet 的 `buckets` 計數 + `unprovided` + `conflicted` **必須等於** `denominators.trials`。
+
+**`stats.json` 與 `trials-index` 的一致性**：每個 facet 的 bucket 計數必須等於依 `trials-index` 的 `displayFields`／`conflictFields` 重新計算的結果。這是 §9.3.6 的不變量之一（見下），否則一份 bucket 計數全錯但總和恰好正確的 `stats.json` 會通過所有其他檢查。
 
 **搜尋索引檔**：`{ "datasetVersion", "fields": [...], "records": [ { "r": "<recordId>", "t": "<trialId>", "d": "YYYY-MM-DD | null", "f": ["<正規化文字>"] } ] }`。`f` 順序對應 `fields`。`d` 為 `null` 表示該 record 無可採計日期（供 §7.2 標示「資料日期不明」）。
 
@@ -649,12 +686,23 @@ v0.4 同時要求「每個非 manifest 檔案內含 `datasetVersion`」與「`da
 
 #### 9.3.6 不變量
 
-- **排序 total order**：`trials` 依 `trialId` 昇序；`recordIds` 依（可採計日期降序、不可採計者置末、`recordId` 昇序）；`latestCohort` 依 `recordId` 昇序。
-- **referential integrity**：每個 `recordId` 存在於 `trial.shard` 指定的 shard；每個 record 被**恰好一個** Trial 引用；`latestCohort ⊆ recordIds`。
-- **計數一致**：`trial.recordCount` == 該 shard 內 `trials[trialId].recordIds` 長度；`trial.latestCohortCount` == `latestCohort` 長度。**（方案 B 的必要防漂移條件。）**
-- **inventory**：`manifest.files` 列出的路徑集合 == `public/data/` 中**除 `manifest.json` 外**的全部檔案。
-- `datasetVersion` 依 §9.3.2；`artifactDigest` 依 §9.3.2。
-- **schemaVersion 升級**：欄位移除、改名、型別或語意變更須 bump；純新增可選欄位不 bump。判準是「舊版前端讀到新資料會做什麼」。
+**不變量之間有依賴，故必須依下列順序評估。** 上游步驟失敗時，下游那條回報「**無法評估**」而非「違規」；對外行為不變（一律 `INTEGRITY_DIGEST` 硬失敗），變的是 report 的歸因。
+
+平鋪列出而不指定順序做不到 B6 要求的「各自獨立反例」：`recordIds` 的排序鍵取自該 record 的 `資料更新時間`，而那筆資料在 shard 裡——record 放錯 shard 時排序鍵**取不到**，硬算會把「查不到」當成「不可採計日期→置末」而同時誤報排序違規。反例一旦必然連帶觸發另一條，**只實作其中一條檢查的驗證器也會通過測試**。
+
+| 序 | 不變量 | 內容 |
+|---:|---|---|
+| 1 | **inventory** | `manifest.files` 列出的路徑集合 == `public/data/` 中**除 `manifest.json` 外**的全部檔案 |
+| 2 | **跨檔版本綁定** | 每個非 manifest 檔案的 top-level `datasetVersion` == `manifest.datasetVersion` |
+| 3 | **referential integrity** | 每個 `recordId` 存在於 `trial.shard` 指定的 shard；每個 record 被**恰好一個** Trial 引用**一次**（同一 Trial 內重複引用亦違規）；`latestCohort ⊆ recordIds` |
+| 4 | **計數一致** | `trial.recordCount` == 該 shard 內 `trials[trialId].recordIds` 長度；`trial.latestCohortCount` == `latestCohort` 長度。**（方案 B 的必要防漂移條件。）** |
+| 5 | **排序 total order** | `trials` 依 `trialId` 昇序；`recordIds` 依（可採計日期降序、不可採計者置末、`recordId` 昇序）；`latestCohort` 依 `recordId` 昇序。**只對通過序 3 的 Trial 評估** |
+| 6 | **stats 一致性** | 每個 facet 的 bucket 計數 == 依 `trials-index` 重算的結果；且 `buckets + unprovided + conflicted` == `denominators.trials`（§9.3.5） |
+| 7 | **`datasetVersion`／`artifactDigest`** | 依 §9.3.2 可重算且與 manifest 所載相符 |
+
+**schemaVersion 升級**（非逐次檢查的不變量，是修訂規則）：欄位移除、改名、型別或語意變更須 bump；純新增可選欄位不 bump。判準是「舊版前端讀到新資料會做什麼」。
+
+**孤兒檔不會改變 `artifactDigest`**——§9.3.2 只走 `manifest.files` 列出的路徑。因此序 1 的 inventory 不變量**無可取代**：沒有它，`public/data/` 裡多一個沒人引用的檔案是完全靜默的。
 
 ### 9.4 `builtAt` 與「無變動不發布」
 
@@ -701,7 +749,11 @@ UI 標籤須與此語意一致：顯示「資料建置時間」，**不得**顯�
 
 ### 9.6 驟降門檻與 warning 的落點
 
-分母 = 上一個**成功發布快照**的來源資料列數 `prev`；`drop = (prev - cur) / prev`，以有理數比較，**不四捨五入**。
+分母 = 上一個**成功發布快照**的來源資料列數 `prev`；`drop = (prev - cur) / prev`。
+
+**比較前不得四捨五入或截斷到固定小數位。** 這是可驗證的要求：`drop = 0.2001` 四捨五入到兩位小數會得 `0.20`，於是**照樣發布**——上游掉了 20.01% 的資料而沒有硬失敗。B4 的 `0.1001` 與 `0.2001` 兩例即為此而設。
+
+（v0.5 寫的是「以有理數比較」。實測 `prev ∈ [3, 20000]`——本資料集 18,736 列——在兩個門檻鄰域的全部 `cur`，float 與有理數的判定**沒有任何一組相異**，故「有理數」在本專案規模下**測不出違反**，是一條讓驗收清單看起來比實際強的要求。仍建議以有理數實作：它便宜，且資料規模改變時不需要重新評估。）
 
 | 條件 | 結果 |
 |---|---|
@@ -760,9 +812,11 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 - **B1** §9.5 **每一個** error code 各有測試，斷言：(a) 非零且相異的 exit code；(b) 已發布狀態未變（完整檔名集合、每檔 SHA-256、`manifest.files` 指向、`artifactDigest` 均不變）；(c) **無新增正式檔**。content-type 須測 `application/zip;charset=utf-8`（通過）與 `text/html`（失敗）。
 - **B2** 每個案例寫死 structured error code 與 layer；**不得**以 stderr 字串判定。另須有**多重異常** fixture 驗證 §9.5 的 precedence。
 - **B3** 斷言 CSV schema **已通過後**才因零列失敗，明確回傳 `ZERO_ROWS`，且已發布 digest 不變。
-- **B4** 門檻案例須含 `drop` = 0.0／0.10／0.1001／**0.20**／0.2001／整數列數邊界／首次無 baseline。逐案例斷言 warning／success／hard-failure 與**是否發布**，且 warning 須出現在 `qa/quality-report.json` 的結構化欄位。
+- **B4** 門檻案例須含 `drop` = 0.0／0.10／0.1001／**0.20**／0.2001／整數列數邊界／首次無 baseline（含 bootstrap 但 0 列 → 仍走 `ZERO_ROWS`）。逐案例斷言 warning／success／hard-failure 與**是否發布**，且 warning 須出現在 `qa/quality-report.json` 的結構化欄位。**`0.1001` 與 `0.2001` 兩例的作用是殺死「先四捨五入再比較」的實作**（§9.6）；以 `(prev, cur)` 整數對驅動，不需造大 CSV。
 - **B5** 失敗注入點須涵蓋**每一個正式狀態變更之後**：替換第一個／部分／最後一個 artifact 後、刪除 orphan artifact 途中、`git add` 只含部分變更、commit 失敗、commit 成功但 push 失敗、push 成功但部署啟用失敗，以及**非例外式終止**（SIGTERM／取消）。每個點斷言：**不存在部分發布的 commit**。
-- **B6** §9.3.6 的每一條不變量各有獨立反例：record 被兩個 Trial 引用、同一 Trial 重複引用、record 放錯 shard、`latestCohort ⊄ recordIds`、**`recordCount` 與 shard 清單長度不符**、**`latestCohortCount` 與 `latestCohort` 長度不符**、`manifest.files` 與實際檔案集合不符 → 全部須 `INTEGRITY_DIGEST` 硬失敗。
+- **B6** §9.3.6 的每一條不變量各有**獨立**反例：record 被兩個 Trial 引用、同一 Trial 重複引用、record 放錯 shard、`latestCohort ⊄ recordIds`、**`recordCount` 與 shard 清單長度不符**、**`latestCohortCount` 與 `latestCohort` 長度不符**、三種排序各自未排序、`manifest.files` 與實際檔案集合不符（**孤兒檔**與**列出但不存在**兩種形狀）、facet bucket 計數與 index 不符 → 全部須 `INTEGRITY_DIGEST` 硬失敗。
+  三條硬性要求：(a) **缺陷須注入在計算 digest 之前**，使 artifact 的 digest 自洽——改完最終位元組不重算的話，測到的只是 digest 本身，referential integrity 那幾條永遠不會被執行到；每個反例另須斷言 digest 相關的不變量**未**觸發。(b) **斷言違規集合 exactly equals 預期**，不是「包含」——用「包含」的話，一個把所有檢查都回報違規的驗證器會全過。(c) 須有**未變造樣本零違規**的反向哨兵。
+  註：「record 被兩個 Trial 引用」的反例必須挑**同一個 shard 內**的兩個 Trial，否則會連帶違反 shard 歸屬而無法隔離。
 - **B7** 跨版本綁定：注入「manifest 為新版但某 shard 為舊 `datasetVersion`」→ 前端 fail-closed 顯示「資料版本不一致，請重新載入」，**不得**混用渲染。另斷言除 `manifest.json` 外所有檔名都帶內容雜湊、且 manifest 為唯一固定 URL。
 - **B8 `datasetVersion` 的可計算性與敏感性** 對同一輸入兩次 build 得到相同 `datasetVersion`（**證明無循環定義**）；任一欄位值改變一個字元 → `datasetVersion` 改變；**兩個檔案內容互換** → `datasetVersion` 改變（證明邏輯檔名已納入）；`artifactDigest` 與 `datasetVersion` 為不同值且各自依 §9.3.2 可重算。
 - **B9 no-change 冪等** 同一凍結來源連跑兩次，`datasetVersion` 相同 → 第二次不發布、不 commit、`builtAt` 不變；改變 `sourceSha256` 但 logical payload 不變 → 仍不發布。
@@ -770,13 +824,14 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 ### C. Sentinel、分類與數值
 
 - **C1** **兩個**分類欄位**各自**通過五處斷言：typed `null`、raw 仍等於 `"0"`、`stats.json` facet 不含 `"0"`、filter DOM 不含該選項、卡片／詳情顯示「未提供」。另測非合法值 → `categoricalUnknown` + warning。
-- **C2** 依 §6.6.3 的解析順序表，對**每一列**（空／正整數／前導零／`0`／嚴格範圍／`min>max`／負數／文字／超界）逐筆斷言 typed、旗標、warning 分級與 UI 文字。`sourceZero` 只在值為 0 時為 true。**前導零須斷言 raw 顯示為 `026` 而非 `26`**。
+- **C2** 依 §6.6.3 的**兩個階段**逐筆斷言 typed、旗標、warning 分級與 UI 文字：階段一的每一列（空／正整數／前導零／`0`／嚴格範圍／`min>max`／負數／文字），以及階段二的兩種超界（**序 2 命中後超界**、**序 3 命中且單端超界**）。`sourceZero` 只在值為 0 時為 true。**前導零須斷言 raw 顯示為 `026` 而非 `26`**。單端超界須斷言 typed 為**整個 `null`**（不得留 `{min:1, max:null}`）、旗標為 `numericRange` ＋ `numericOutOfRange`、`enroll` 歸「未提供」。
 - **C3** 寫死 `N/A`／`NA`／`""` 三類的**精確計數與對應 recordId**（**計數須數全部列，不是為該案例設計的列**），並斷言詳情切換到該 record 後的**可見文字精確相等**。
 - **C4 反向哨兵**（三個**獨立**且**確為違規**的 mutation；**不得**使用「分類 typed 轉 null」，那是 §6.6.1 規定的正確行為）：
   1. 分類 sentinel 的 **raw 值遺失** → C1 的 raw 斷言須失敗
   2. `stats.json` facet **保留 `"0"`** → C1 的 facet 與 filter DOM 斷言須失敗
   3. 文字 sentinel 三型**塌成同一值** → C3 須失敗
-- **C5 semantic comparison key** 逐型別驗證：`""` vs `"-5"` 須**判為衝突**（typed 皆 null 但語意狀態不同）；`"20"` vs `"２０"`（全形）須判**不衝突**且帶 `rawVariants`；`"20-40"` vs `"20～40"` 須判**不衝突**且帶 `rawVariants`；`"20-40"` vs `"20-41"` 須判**衝突**。
+- **C5 semantic comparison key** **§6.4.2 表中每一列各有一組正例**，不得只測其中幾型。至少含：`""` vs `"-5"` **衝突**（typed 皆 null 但語意狀態不同）；`"20"` vs `"２０"`（全形）**不衝突**且帶 `rawVariants`；`"20-40"` vs `"20～40"` **不衝突**且帶 `rawVariants`；`"20-40"` vs `"20-41"` **衝突**；`"40-20"` vs `"50-30"`（皆 `numericRangeInvalid`）**衝突**；`"第三期"` vs `"Phase III"`（皆 `categoricalUnknown`）**衝突**；`2^53` vs `2^53+1`（皆 `numericOutOfRange`）**衝突**。
+  另須有 **exhaustiveness 測試**：斷言比較鍵的 dispatch 涵蓋 §9.3.3 旗標封閉集合的每一個狀態（`rawVariants` 除外），且遇到未涵蓋狀態時**硬失敗而非 fallback**。
 - **C6 `rawVariants` 的層級** 斷言 `rawVariants` 出現在**該欄位的 `flags`**，且 Trial 層級**不存在**等義旗標；代表值為 `recordId` 字典序最小者的 raw；詳情頁列出 cohort 中**每一筆** record 的原始值（不得只列去重文字）。
 
 ### D. 搜尋與篩選
@@ -793,7 +848,7 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 ### E. 呈現與誤導防範
 
 - **E1** 以「**允許呈現的狀態概念封閉清單** + §10 三項免責文句的正向精確斷言」為主 oracle；禁字只作 mutation guard。**不對來源原文設無條件禁字**。
-- **E2** 由**實際 DOM／card schema 反向比對** oracle inventory：任何存在於 DOM 但不在 oracle 清單中的統計卡**必須使測試失敗**。每張卡寫死精確值、單位、分母類型；各 facet 的 `buckets + unprovided + conflicted` 須等於 `denominators.trials`。
+- **E2** 由**實際 DOM／card schema 反向比對** oracle inventory，而 **oracle 清單的唯一來源是 §9.3.5 的封閉 facet 名單**（`phase`／`scale`／`applicant`）：任何存在於 DOM 但不在清單中的統計卡**必須使測試失敗**，清單中缺少的也必須失敗（雙向對帳）。每張卡寫死精確值、單位、分母類型；各 facet 的 `buckets + unprovided + conflicted` 須等於 `denominators.trials`。
 - **E3** 斷言各 label 對應**精確 fixture 值**（來源 `資料更新時間` 對應 record、`builtAt` 對應 manifest），覆蓋首頁、結果頁、詳情頁與 record 切換後。
 - **E4** 建立**來源資料可到達的輸出 surface 封閉 inventory**（卡片、詳情、record 切換、filter option、搜尋命中標籤、統計 label、accessible name、URL 顯示），逐一測 XSS fixture。
 - **E5** 逐頁斷言 §10 三項核心性質的**可見文字**，可見性綁定 G1／G2 的 viewport、最小字級與對比 oracle。
@@ -803,7 +858,9 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 
 ### F. 效能（分層預算）
 
-- **F1** **Tier 0（預設 scope 的冷啟動）≤1.5 MB gzip**。定義為「冷啟動到**可搜尋 readiness**」的全部 network responses；readiness 以**功能性 probe** 判定（執行一個固定查詢並取得正確結果集才算就緒）。以 production build 與固定 gzip 設定量測，列出納入檔案清單與總和寫入 CI artifact。**資料層實測基線：`trials-index`（含 `searchShortLatest`、不含 `recordIds`）1,236 KiB gzip。**
+- **F1** **Tier 0（預設 scope 的冷啟動）≤1.5 MB gzip**。定義為「冷啟動到**可搜尋 readiness**」的全部 network responses；readiness 以**功能性 probe** 判定（執行一個固定查詢並取得正確結果集才算就緒）。以 production build 與固定 gzip 設定量測，列出納入檔案清單與總和寫入 CI artifact。
+  **Tier 0 的資料層檔案清單（封閉）**：`manifest.json` ＋ `trials-index.<h>.json` ＋ `stats.<h>.json`。三者都在冷啟動路徑上——首頁要顯示統計卡（E2）、篩選控制項的值域來自 `stats.json` 的 facet buckets（§9.3.5）。
+  **實測基線僅涵蓋 `trials-index`（含 `searchShortLatest`、不含 `recordIds`）1,236 KiB gzip；`stats.json` 尚未量測**，其大小主要由 `applicant` facet 的 distinct 值數決定，而該基數**從未量測**（PROGRESS.md 的欄位表是「差異欄位分布（按組數）」，不是 cardinality）。**M1 產出第一份真實 artifact 後必須補量三者總和；在補量之前不得調整 1.5 MB 門檻。** 若總和超出，先報瓶頸歸因，不調鬆數字。
   > 門檻自 v0.4 的 1.0 MB 上調為 1.5 MB：原基線「715–900 KiB」是估算值，實測有誤。卡片資料本身即 903 KiB；`recordIds` 移入 shard 後省 299 KiB；**拆成獨立檔反而更大**（903+693=1,596 > 1,236），故不拆。
 - **F2** 各按需 tier 的實測 gzip 上限記錄於規格與 CI artifact（`all`+`latest` 2,044 KiB；`short`+`all` 1,649 KiB；`all`+`all` 另加 5,389 KiB），**不計入 F1**，超出記錄值 20% 須在 CI 告警。
 - **F3** 長文字隔離：在 `納入條件`／`排除條件`／`試驗目的`／`主要評估指標` 放**多筆分散的唯一 canary**（≥5 筆，跨不同 shard），斷言 Tier 0 的全部 response 與 bundle 均不含其**內容**，且**初始 payload 的 schema 不含這些欄位鍵**。
@@ -826,8 +883,8 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 
 ## 12. 里程碑
 
-- **M0 完成**：規格通過三輪覆審 ＋ A 群 fixture 反驗；十項動工前契約已封存（見 §14）
-- **M0.5**：B 群 fixture ＋ 產出一份**最小 artifact 樣本**（含 manifest、trials-index、一個 shard），實證 §9.3 的 schema 與 §9.3.2 的 digest 計算可實作。**這取代第四輪 prose 覆審。**
+- **M0 完成**：規格通過三輪覆審 ＋ A 群 fixture 反驗；動工前契約封存（見 §14）
+- **M0.5 完成**：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（8 Trial／12 個非 manifest 檔）、B 群失敗注入（12 個輸入）、§9.3.6 不變量反例（11 種）、C4 的三個 mutation。共 240 條斷言。**取代了第四輪 prose 覆審，並撞出 GAP-8～GAP-12（本版 v0.6 已併入）。**
 - **M1** repo 鷹架與 ETL（A／B／C 驗收）
 - **M2** 前端 MVP（D／E／F／G 驗收）
 - **M3** CI 與月更新（H 驗收）＋ Cloudflare Pages 首次部署
@@ -844,7 +901,7 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 - Service worker／離線。
 - Email 訂閱。
 
-## 14. 動工前已封存的十項契約
+## 14. 動工前已封存的契約（13 項）
 
 | # | 契約 | 章節 | 來源 |
 |---|---|---|---|
@@ -858,9 +915,20 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 | 8 | manifest file-set 不變量修正；只輸出非空 shard | §9.3.1／§9.3.6 | r3 Medium |
 | 9 | 方案 B 的 index／shard 職責切分與計數不變量；F1 改 ≤1.5 MB | §6.4.4／§9.3.6／F1 | 實測 S3，使用者定案 |
 | 10 | 嚴格範圍解析 `numericRange` 與 `enroll` 的區間重疊語意 | §6.6.3／§8.4／D8 | 實測 S4，使用者定案 |
+| 11 | semantic comparison key **涵蓋 §9.3.3 旗標封閉集合的每一個狀態**，未涵蓋者硬失敗不 fallback | §6.4.2 | M0.5 GAP-8 |
+| 12 | §9.3.6 不變量的**評估順序**與「無法評估」處置 | §9.3.6 | M0.5 GAP-11 |
+| 13 | `stats.json` 的 **facet 名單封閉為三個**，E2 以它為唯一 oracle 來源 | §9.3.5／E2 | M0.5 GAP-10 |
 
 ## 15. 修訂紀錄
 
+- **v0.6（2026-09-18）** 依 `.ai-review/fixture-findings-m05.md` 的 GAP-8～GAP-12 改寫。**這五個洞不是讀 prose 讀出來的，是把 v0.5 的契約真的做出來時撞到的。** 主要變更：
+  - **§6.4.2 補上三個漏掉的語意狀態**（`numericRangeInvalid`／`numericOutOfRange`／`categoricalUnknown`），皆採 `(旗標名, conflictText(raw))`。v0.5 的表看起來很完整（10 列），但與 §9.3.3 的旗標封閉集合有三個差集——**兩張表都在本文件內，只是沒有人對過**。另要求以窮盡 dispatch 實現，遇未涵蓋狀態**硬失敗不 fallback**
+  - **§6.6.3 拆成兩階段**：階段一是原本的序 1–6，階段二是後置的可表示範圍檢查。v0.5 把範圍檢查寫成表後的獨立段落而沒有序位，與「第一個命中者決定結果」字面矛盾。並明定**單端超界時整個 typed 為 `null`**（不得留 `{min:1, max:null}`，半個區間無法參與 §8.4 的重疊判定）
+  - **§9.3.5 封閉 facet 名單為三個**（`phase`／`scale`／`applicant`），逐一寫出 `enroll`／`period`／`updated` 被排除的理由，並讓 **E2 以它為唯一 oracle 來源**。另把「`stats.json` 與 `trials-index` 的計數一致性」列為不變量——否則一份 bucket 計數全錯但總和恰好正確的 `stats.json` 會通過所有其他檢查
+  - **§9.3.6 改為有序的 7 條並定義「無法評估」**。平鋪列出做不到 B6 要求的「各自獨立反例」：`recordIds` 的排序鍵取自 shard 內的 record，record 放錯 shard 時排序鍵取不到，硬算會同時誤報排序違規。**反例一旦必然連帶觸發另一條，只實作其中一條檢查的驗證器也會通過測試**
+  - **§9.6 把「以有理數比較」改為「不得先四捨五入或截斷到固定小數位再比較」**。實測 `prev ∈ [3, 20000]` 的門檻鄰域內 float 與有理數判定無一組相異，故原文是一條**測不出違反**的要求；真正守得住的是四捨五入那條（`drop=0.2001` 會被判成 `0.20` 而照樣發布）
+  - **F1 補上 Tier 0 的封閉檔案清單**（`manifest.json` ＋ `trials-index` ＋ `stats.json`）。v0.5 的 1,236 KiB 基線只量了 `trials-index`，而 `stats.json` 也在冷啟動路徑上且**從未量測**。**補量之前不得調整 1.5 MB 門檻**
+  - 驗收條件同步：C2 補階段二的兩種超界、C5 改為「§6.4.2 表中每一列各有正例」＋ exhaustiveness 測試、B4 寫明兩個殺 rounding 的案例、B6 補三條硬性要求（注入在 digest 之前／exactly equals／反向哨兵）與同 shard 的限制、E2 綁定封閉 facet 名單
 - **v0.5（2026-09-18）** 依 `plan-verdict-r3.md`（接受 12／不成立 1／Blocker 1）與 `fixture-findings-a.md` 改寫。主要變更：
   - **§9.3.2 解開 `datasetVersion` 與整體 digest 的循環定義**（r3 Blocker，且是 v0.4 修 N8 時自造的）。分離為 `datasetVersion`（logical payload，不含版本欄位本身）與 `artifactDigest`（最終位元組），並封存 hash 演算法／長度、串接形式（hex + 邏輯檔名）、是否納入路徑
   - 新增 §6.0 字元集與正規化的基礎定義。**「ASCII 英數字元」必須明定**——Python 的 `"系統測試".isalnum()` 為 `True`，naive 實作會與 §6.2.2 的意圖完全相反（新增 A10 驗收）

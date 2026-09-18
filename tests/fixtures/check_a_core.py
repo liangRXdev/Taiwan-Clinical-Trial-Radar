@@ -8,12 +8,14 @@
 而那種失效在實作寫出來以前不會被發現。A2 要求每個案例都附 oracle，
 這支腳本確保 oracle 指的案例在資料裡真的存在。
 
-v0.5 對齊（M0.5）：
+v0.6 對齊：
 - [2] 的同日分類改用 §6.4.2 的 **semantic comparison key**（依欄位型別與語意狀態），
   取代 v0.4 的「比正規化 raw」。
 - [4] 的數值分類改用 §6.6.3 的**完整 lexical grammar 與解析順序**
   （含 numericRange／numericRangeInvalid／numericOutOfRange）。
-- 比較鍵表未涵蓋的語意狀態一律回傳 `__SPEC_GAP__` 鍵並單獨列出，**不猜一個行為**。
+- v0.6 §6.4.2 補上三個原本未涵蓋的語意狀態（GAP-8 結案）。比較鍵的 dispatch 為**窮盡**，
+  表外狀態一律 `raise`——**不得 fallback 到「比 raw」或「視為相等」**，
+  那會把規格缺口變成一個看不見的行為。
 
 跑法：`python tests/fixtures/check_a_core.py`
 """
@@ -115,7 +117,8 @@ def date_class(s):
 def numeric_state(raw):
     """回傳 (state, payload, flags)。state 為 §6.6.3 的解析結果分類。
 
-    解析順序即規格表的序 1–6；可表示範圍檢查在整數化之後套用。
+    v0.6 §6.6.3 分兩階段：階段一為序 1–6，階段二為後置的可表示範圍檢查（只在序 2／3
+    命中時套用）。單端超界時**整個** typed 為 null，旗標為 numericRange ＋ numericOutOfRange。
     """
     v = nfkc((raw or "").strip())
     if v == "":
@@ -130,7 +133,7 @@ def numeric_state(raw):
         lo, hi = int(m.group(1)), int(m.group(2))
         if lo <= hi:
             if hi > MAX_SAFE_INT or lo > MAX_SAFE_INT:
-                # §6.6.3 的可表示範圍對 range 端點的處置未明寫旗標組合，見 GAP-9
+                # v0.6 §6.6.3 階段二：任一端超界 → 整個 typed 為 null（不留半個區間）
                 return ("numericOutOfRange", None, ["numericRange", "numericOutOfRange"])
             return ("range", (lo, hi), ["numericRange"])
         return ("numericRangeInvalid", None, ["numericRangeInvalid"])
@@ -152,9 +155,15 @@ def categorical_state(field, raw):
 
 SPEC_GAP = "__SPEC_GAP__"
 
+# v0.6 §6.4.2 須涵蓋 §9.3.3 旗標封閉集合的每一個狀態（rawVariants 除外——它是比較的
+# **結果**不是輸入）。四個 typed 為 null 的數值異常狀態皆採 (旗標名, conflictText(raw))。
+NULL_TYPED_NUMERIC_STATES = (
+    "numericUnparsed", "numericImplausible", "numericRangeInvalid", "numericOutOfRange",
+)
+
 
 def comparison_key(field, raw):
-    """§6.4.2 的比較鍵。規格表未涵蓋的狀態回傳 SPEC_GAP 開頭的鍵並登記。"""
+    """§6.4.2 的比較鍵。**窮盡 dispatch**：表外狀態一律 raise，不 fallback。"""
     if field in TEXT_FIELDS:
         return ("text", conflict_text(raw))
 
@@ -164,8 +173,9 @@ def comparison_key(field, raw):
             return ("unprovided",)
         if st == "cat":
             return ("cat", val)
-        spec_gaps.append(("categoricalUnknown", field, raw))
-        return (SPEC_GAP, "categoricalUnknown", conflict_text(raw))
+        if st == "categoricalUnknown":
+            return ("categoricalUnknown", conflict_text(raw))
+        raise AssertionError(f"§6.4.2 未涵蓋的分類狀態：{st}")
 
     if field in NUMERIC_FIELDS:
         st, payload, _ = numeric_state(raw)
@@ -175,10 +185,9 @@ def comparison_key(field, raw):
             return ("range", payload[0], payload[1])
         if st == "numericMissing":
             return ("numericMissing",)
-        if st in ("numericUnparsed", "numericImplausible"):
+        if st in NULL_TYPED_NUMERIC_STATES:
             return (st, conflict_text(raw))
-        spec_gaps.append((st, field, raw))
-        return (SPEC_GAP, st, conflict_text(raw))
+        raise AssertionError(f"§6.4.2 未涵蓋的數值狀態：{st}")
 
     # PERIOD_FIELDS
     d = parse_date(raw)
@@ -282,9 +291,6 @@ def main():
         conflicted, raw_variant_fields, gap_fields = [], [], []
         for f in PRESENTATION_FIELDS:
             keys = {comparison_key(f, rows[k][f]) for k in cohort}
-            if any(x[0] == SPEC_GAP for x in keys) and len({rows[k][f] for k in cohort}) > 1:
-                gap_fields.append(f)
-                continue
             if len(keys) > 1:
                 conflicted.append(f)
             elif len({rows[k][f] for k in cohort}) > 1:
@@ -337,9 +343,8 @@ def main():
             check(ka == kb and case["a"] != case["b"],
                   f"{case['label']}：{case['a']!r} vs {case['b']!r} → 比較鍵相同且 raw 不同"
                   f"（不衝突 + rawVariants）")
-        else:  # undefined
-            check(ka[0] == SPEC_GAP and kb[0] == SPEC_GAP,
-                  f"{case['label']}：{case['a']!r} vs {case['b']!r} → 規格未定義比較鍵（登記為 gap）")
+        else:
+            raise AssertionError(f"未知的 expect：{case['expect']}")
 
     print("\n[3] §6.5 日期異常")
     counts = {"dateMissing": 0, "dateUnparsed": 0, "dateFuture": 0, "ok": 0}
@@ -531,20 +536,54 @@ def main():
                  if any(nfkc(r[f]).strip().casefold() == "test" for f in PRESENTATION_FIELDS)]
     check(by_rule_b, f"≥1 筆僅以 TEST 值型觸發（§6.2.2 (b)）：{sorted(by_rule_b)}")
 
-    print("\n[8] 規格未定義的比較鍵狀態")
-    uniq_gaps = sorted({g[0] for g in spec_gaps})
-    if uniq_gaps:
-        for st in uniq_gaps:
-            samples = sorted({(f, repr(v)) for s, f, v in spec_gaps if s == st})[:3]
-            print(f"  GAP   §6.4.2 未定義 {st} 的比較鍵；fixture 觸發於 {samples}")
-        print(f"  GAP   受影響的同日 cohort："
-              f"{json.dumps(gap_dependent_groups, ensure_ascii=False)}")
-    exp_gap_states = sorted(oracle["specGapStates"]["undefinedComparisonKey"])
-    check(uniq_gaps == exp_gap_states,
-          f"未定義比較鍵的狀態集合 {uniq_gaps} == oracle {exp_gap_states}")
-    exp_gap_groups = sorted(oracle["specGapStates"]["affectedCohorts"])
-    check(sorted(p for p, _ in gap_dependent_groups) == exp_gap_groups,
-          f"受影響 cohort {sorted(p for p, _ in gap_dependent_groups)} == oracle {exp_gap_groups}")
+    print("\n[8] §6.4.2 的比較鍵 dispatch 為窮盡（GAP-8 已於 v0.6 結案）")
+    check(not spec_gaps and not gap_dependent_groups,
+          f"不存在未定義比較鍵的狀態（實際 {sorted({g[0] for g in spec_gaps})}）")
+
+    # 窮盡性：§9.3.3 的 field-scoped 旗標封閉集合（rawVariants 除外），每一個都要取得比較鍵
+    covered = {
+        "categoricalUnprovided": ("臨床試驗期別", "0"),
+        "categoricalUnknown": ("臨床試驗期別", "第三期"),
+        "numericMissing": ("台灣預計受試者人數", ""),
+        "sourceZero": ("台灣預計受試者人數", "0"),
+        "numericRange": ("台灣預計受試者人數", "20-40"),
+        "numericRangeInvalid": ("台灣預計受試者人數", "40-20"),
+        "numericImplausible": ("台灣預計受試者人數", "-5"),
+        "numericUnparsed": ("台灣預計受試者人數", "約400"),
+        "numericOutOfRange": ("台灣預計受試者人數", str(2 ** 53)),
+        "periodStartMissing": ("試驗預計執行期間起", ""),
+        "periodStartUnparsed": ("試驗預計執行期間起", "2025/13/01"),
+        "periodEndMissing": ("試驗預計執行期間迄", ""),
+        "periodEndUnparsed": ("試驗預計執行期間迄", "2025/13/01"),
+    }
+    missing_key = []
+    for flag, (field, sample) in sorted(covered.items()):
+        try:
+            key = comparison_key(field, sample)
+            if not (isinstance(key, tuple) and key[0] != SPEC_GAP):
+                missing_key.append(flag)
+        except AssertionError:
+            missing_key.append(flag)
+    check(not missing_key,
+          f"§9.3.3 旗標封閉集合的 {len(covered)} 個狀態全部取得比較鍵"
+          + ("" if not missing_key else f"（缺 {missing_key}）"))
+
+    # 反向哨兵：表外狀態必須硬失敗，不得 fallback
+    orig = globals()["numeric_state"]
+    globals()["numeric_state"] = lambda raw: ("someUnlistedState", None, [])
+    try:
+        comparison_key("台灣預計受試者人數", "x")
+        raised = False
+    except AssertionError:
+        raised = True
+    finally:
+        globals()["numeric_state"] = orig
+    check(raised, "表外狀態使 dispatch 硬失敗，**不得** fallback 到比 raw 或視為相等")
+
+    for p_ in ("CMP-035", "CMP-036", "CMP-037"):
+        fields = oracle["cohortClassification"]["conflicting"].get(p_)
+        check(bool(fields),
+              f"{p_} 依 v0.6 §6.4.2 判為衝突，衝突欄位 {fields}（v0.5 時為 __SPEC_GAP__）")
 
     print()
     for n in notes:

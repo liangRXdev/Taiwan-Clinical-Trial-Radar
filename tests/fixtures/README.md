@@ -1,6 +1,6 @@
 # Fixtures
 
-凍結測試資料與手寫 oracle。對應 `.ai-review/plan.md` v0.5 §11 的驗收編號。
+凍結測試資料與手寫 oracle。對應 `.ai-review/plan.md` v0.6 §11 的驗收編號。
 
 **這裡沒有 ETL 實作。** `build_*.py` 只把字面值寫成 CSV 或注入輸入；`check_*.py` 只檢查
 fixture 資料本身的性質，不計算 Trial 模型。唯一的例外是 `artifact_sample/`，見下。
