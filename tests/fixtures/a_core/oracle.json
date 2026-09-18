@@ -1,0 +1,810 @@
+{
+ "_about": "A 群驗收條件的手寫 oracle。對應 plan.md v0.4 §11 A1–A9。",
+ "_discipline": [
+  "本檔為手寫，刻意不由 build_a_core.py 或任何與實作共用的邏輯計算（A5：oracle 的 row identity 必須獨立於 §6.3 的 canonical serialization，否則兩邊會一致地錯而通過）。",
+  "列一律以 rowKey 指涉，不用 CSV 列序——A3 要打亂列序重跑。",
+  "不寫 trialId／recordId 的字面值（雜湊輸出手寫不可能）。ID 只檢查格式、唯一性與跨排列穩定性；語意用 rowKey 群組表達。",
+  "規格未定義之處一律填 \"__SPEC_GAP__\" 並在 specGaps 列出，不猜。"
+ ],
+ "totals": {
+  "recordCount": 50,
+  "trialCount": 29,
+  "_note": "trialCount 29 = 26 個非空 distinct protocol + 3 列空 protocol（各自成 Trial）。由 rowKey 群組獨立數出（見 trials），不引用任何 build 輸出。A1 禁止只比總數，故 trials 另給完整 group membership。"
+ },
+ "trials": [
+  {
+   "label": "BIG-001",
+   "identityKeySource": "P:BIG-001",
+   "rowKeys": [
+    "big001-h1",
+    "big001-h2",
+    "big001-h3",
+    "big001-h4",
+    "big001-h5",
+    "big001-h6",
+    "big001-h7",
+    "big001-h8",
+    "big001-L1",
+    "big001-L2",
+    "big001-L1d"
+   ],
+   "recordCount": 11,
+   "byteIdenticalRowGroups": [
+    [
+     "big001-L1",
+     "big001-L1d"
+    ]
+   ],
+   "latestSourceDate": "2026-03-01",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "big001-L1",
+    "big001-L1d",
+    "big001-L2"
+   ],
+   "latestCohortSize": 3,
+   "latestAmbiguous": true,
+   "conflictFields": [
+    "台灣預計受試者人數",
+    "納入條件"
+   ],
+   "displayFieldsPresent": [
+    "臨床試驗申請者",
+    "臨床試驗計畫中文名稱",
+    "臨床試驗期別",
+    "本臨床試驗規模",
+    "試驗目的",
+    "試驗預計執行期間起",
+    "試驗預計執行期間迄",
+    "全球預計受試者人數",
+    "適應症中文",
+    "主要評估指標",
+    "排除條件"
+   ],
+   "displayFieldsAbsent": [
+    "台灣預計受試者人數",
+    "納入條件"
+   ],
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": false,
+   "_purpose": "A2 的「≥1 個 10 列以上 protocol」；A4 反向哨兵的指定 tie group；cohort 內含一對逐位元相同的列（驗 multiplicity 與 #k 序號）；納入條件含引號、逗號、換行與 TAB（驗 CSV quoting）"
+  },
+  {
+   "label": "DUP-002",
+   "identityKeySource": "P:DUP-002",
+   "rowKeys": [
+    "dup002-a",
+    "dup002-b"
+   ],
+   "recordCount": 2,
+   "byteIdenticalRowGroups": [
+    [
+     "dup002-a",
+     "dup002-b"
+    ]
+   ],
+   "latestSourceDate": "2026-02-10",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "dup002-a",
+    "dup002-b"
+   ],
+   "latestCohortSize": 2,
+   "latestAmbiguous": false,
+   "conflictFields": [],
+   "displayFieldsPresent": "all13",
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": false,
+   "_purpose": "A2 的「≥1 組 16 欄全同純重複」。兩列必須都保留（A5 multiplicity），不得去重成 1"
+  },
+  {
+   "label": "WS-003",
+   "identityKeySource": "P:WS-003",
+   "rowKeys": [
+    "ws003-a",
+    "ws003-b"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-04-01",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "ws003-a",
+    "ws003-b"
+   ],
+   "latestCohortSize": 2,
+   "latestAmbiguous": false,
+   "conflictFields": [],
+   "displayFieldsPresent": "all13",
+   "displayFieldRawValues": {
+    "臨床試驗計畫中文名稱": "__SPEC_GAP__",
+    "納入條件": "__SPEC_GAP__"
+   },
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": false,
+   "_purpose": "A2 的「≥1 組同日僅空白／全半形差異，須判為不衝突」。§6.4 的正規化比較使兩列不衝突（實測母體有 14 組屬此類）",
+   "_gap": "GAP-1：不衝突但 raw 不同，§6.4 的「共同 raw 值」無定義"
+  },
+  {
+   "label": "PH-004",
+   "identityKeySource": "P:PH-004",
+   "rowKeys": [
+    "ph004-a",
+    "ph004-b"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-05-01",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "ph004-a",
+    "ph004-b"
+   ],
+   "latestAmbiguous": true,
+   "conflictFields": [
+    "臨床試驗期別"
+   ],
+   "displayFieldsAbsent": [
+    "臨床試驗期別"
+   ],
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": false,
+   "numericExpectations": {
+    "全球預計受試者人數": {
+     "raw": "0",
+     "typed": 0,
+     "flags": [
+      "sourceZero"
+     ],
+     "grade": "normal"
+    }
+   },
+   "_purpose": "同日衝突 #2，衝突欄位為可篩選的分類欄位（D6：須歸入「不一致」分組且不出現在 Phase Ⅱ 或 Phase Ⅰ,Phase Ⅱ 的篩選結果中）；兼 §6.6 數值 0"
+  },
+  {
+   "label": "IND-005",
+   "identityKeySource": "P:IND-005",
+   "rowKeys": [
+    "ind005-a",
+    "ind005-b"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-06-01",
+   "dateUnknown": false,
+   "latestAmbiguous": true,
+   "conflictFields": [
+    "適應症中文"
+   ],
+   "displayFieldsAbsent": [
+    "適應症中文"
+   ],
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": false,
+   "numericExpectations": {
+    "全球預計受試者人數": {
+     "raw": "",
+     "typed": null,
+     "flags": [
+      "numericMissing"
+     ],
+     "grade": "normal"
+    }
+   },
+   "_purpose": "同日衝突 #3；兼 §6.6 數值空值"
+  },
+  {
+   "label": "EMPTY-DUP",
+   "identityKeySource": "H:<sha256(canonical)>#k",
+   "rowKeys": [
+    "empty-dup-a",
+    "empty-dup-b"
+   ],
+   "expandsToTrialCount": 2,
+   "eachTrialRecordCount": 1,
+   "trialIdSetMustBeDistinct": true,
+   "rowKeyToTrialMapping": "__ORDER_INDIFFERENT__",
+   "latestSourceDate": "2026-01-20",
+   "dateUnknown": false,
+   "latestAmbiguous": false,
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": true,
+   "_purpose": "A2／A6 的「≥2 筆完全相同的空 protocol 列」。兩列必須成為兩個 Trial、各有唯一 ID、multiset 完整保留",
+   "_note": "oracle 刻意不指定 empty-dup-a 對到 #0 還是 #1：兩列逐位元相同，序號分配在內容上不可區分，故只斷言「兩個相異 ID 且兩者的輸出內容相同」。A3 要求的是輸出逐位元相同，此處成立",
+   "_gap": "GAP-4：protocol 為空是否也算 protocolNonIdentifier，§6.2.2 只寫「不含任何英數字元」，空字串是其退化情形但 §6.3 已另有 H: 分支，兩節關係未寫明"
+  },
+  {
+   "label": "EMPTY-UNIQ",
+   "identityKeySource": "H:<sha256(canonical)>",
+   "rowKeys": [
+    "empty-uniq"
+   ],
+   "recordCount": 1,
+   "latestSourceDate": "2026-01-21",
+   "dateUnknown": false,
+   "latestAmbiguous": false,
+   "conflictFields": [],
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": true,
+   "identityKeyHasOrdinalSuffix": "__SPEC_GAP__",
+   "_gap": "GAP-2：單一空 protocol 列是否帶 #0 後綴未定義，而這會決定 ID 是否在未來出現重複列時改變"
+  },
+  {
+   "label": "MK-3475-158",
+   "identityKeySource": "P:MK-3475-158",
+   "rowKeys": [
+    "near-hyphen-a"
+   ],
+   "recordCount": 1,
+   "latestSourceDate": "2026-07-01",
+   "latestAmbiguous": false,
+   "nearDuplicateGroup": "MK3475158",
+   "protocolNonIdentifier": false,
+   "_purpose": "A1 的「不應合併」案例之一（連字號有無）。必須與 MK3475-158 是兩個 Trial"
+  },
+  {
+   "label": "MK3475-158",
+   "identityKeySource": "P:MK3475-158",
+   "rowKeys": [
+    "near-hyphen-b"
+   ],
+   "recordCount": 1,
+   "latestSourceDate": "2026-07-02",
+   "latestAmbiguous": false,
+   "nearDuplicateGroup": "MK3475158",
+   "protocolNonIdentifier": false
+  },
+  {
+   "label": "9785-CL- 0123",
+   "identityKeySource": "P:9785-CL- 0123",
+   "rowKeys": [
+    "near-space-a"
+   ],
+   "recordCount": 1,
+   "nearDuplicateGroup": "9785CL0123",
+   "protocolNonIdentifier": false,
+   "_purpose": "A1 的「不應合併」案例之二（內部空白）。§6.2 明文不壓內部空白，故不得與 9785-CL-0123 合併"
+  },
+  {
+   "label": "9785-CL-0123",
+   "identityKeySource": "P:9785-CL-0123",
+   "rowKeys": [
+    "near-space-b"
+   ],
+   "recordCount": 1,
+   "nearDuplicateGroup": "9785CL0123",
+   "protocolNonIdentifier": false
+  },
+  {
+   "label": "ROR-PH-301(APD811-301",
+   "identityKeySource": "P:ROR-PH-301(APD811-301",
+   "rowKeys": [
+    "near-paren-a"
+   ],
+   "recordCount": 1,
+   "nearDuplicateGroup": "RORPH301APD811301",
+   "protocolNonIdentifier": false,
+   "_purpose": "A1 的「不應合併」案例之三（括號未閉合）"
+  },
+  {
+   "label": "ROR-PH-301(APD811-301)",
+   "identityKeySource": "P:ROR-PH-301(APD811-301)",
+   "rowKeys": [
+    "near-paren-b"
+   ],
+   "recordCount": 1,
+   "nearDuplicateGroup": "RORPH301APD811301",
+   "protocolNonIdentifier": false
+  },
+  {
+   "label": "SAME-010",
+   "identityKeySource": "P:SAME-010",
+   "rowKeys": [
+    "same010-old",
+    "same010-new"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-08-05",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "same010-new"
+   ],
+   "latestCohortSize": 1,
+   "latestAmbiguous": false,
+   "conflictFields": [],
+   "displayFieldRawValues": {
+    "台灣預計受試者人數": "16"
+   },
+   "recordIdsOrderRowKeys": [
+    "same010-new",
+    "same010-old"
+   ],
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": false,
+   "_purpose": "A1 的「應合併」案例。同一 raw protocol 兩列不同日 → 一個 Trial 兩筆紀錄，卡片取較新那筆的 16"
+  },
+  {
+   "label": "系統測試",
+   "identityKeySource": "P:系統測試",
+   "rowKeys": [
+    "nonid-test"
+   ],
+   "recordCount": 1,
+   "latestSourceDate": "2026-01-02",
+   "latestAmbiguous": false,
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": true,
+   "suspectedUpstreamTestRow": true,
+   "acceptedAsProtocolAlias": false,
+   "_purpose": "§6.2.2 的上游測試列（申請者與標題皆空）。不得刪除、不得作為 ?protocol= 別名、統計歸入「未提供編號」",
+   "_note": "loose key 為空字串，依 §6.2.1 第 4 點不納入任何 nearDuplicateGroup"
+  },
+  {
+   "label": "未列編號",
+   "identityKeySource": "P:未列編號",
+   "rowKeys": [
+    "nonid-real"
+   ],
+   "recordCount": 1,
+   "latestSourceDate": "2026-01-03",
+   "latestAmbiguous": false,
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": true,
+   "suspectedUpstreamTestRow": false,
+   "categoricalExpectations": {
+    "臨床試驗期別": {
+     "raw": "0",
+     "typed": null,
+     "inStatsFacet": false,
+     "inFilterDom": false,
+     "ui": "未提供"
+    },
+    "本臨床試驗規模": {
+     "raw": "0",
+     "typed": null,
+     "inStatsFacet": false,
+     "inFilterDom": false,
+     "ui": "未提供"
+    }
+   },
+   "displayFieldRawValues": {
+    "臨床試驗期別": "__SPEC_GAP__",
+    "本臨床試驗規模": "__SPEC_GAP__"
+   },
+   "_purpose": "§6.2.2 的「真實試驗但未給編號」；兼 C1 的兩個分類 sentinel 各自五處斷言",
+   "_gap": "GAP-3：displayFields 存 raw 還是 typed 未定義。分類 sentinel 的 raw 是 \"0\"，typed 是 null，UI 要顯示「未提供」——三者不同"
+  },
+  {
+   "label": "RCP-014A",
+   "identityKeySource": "P:RCP-014A",
+   "rowKeys": [
+    "rcp014-a"
+   ],
+   "recordCount": 1,
+   "receiptNo": "移案BPA",
+   "protocolNonIdentifier": false,
+   "_purpose": "A2 的「≥1 筆 TFDA收文號=移案BPA」與「收文號重複」。與 RCP-014B 共用同一收文號，證明收文號不可當主鍵"
+  },
+  {
+   "label": "RCP-014B",
+   "identityKeySource": "P:RCP-014B",
+   "rowKeys": [
+    "rcp014-b"
+   ],
+   "recordCount": 1,
+   "receiptNo": "移案BPA",
+   "protocolNonIdentifier": false,
+   "mustNotMergeWith": "RCP-014A"
+  },
+  {
+   "label": "DT-015",
+   "identityKeySource": "P:DT-015",
+   "rowKeys": [
+    "dt015-bad",
+    "dt015-good"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-02-01",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "dt015-good"
+   ],
+   "latestAmbiguous": false,
+   "recordFlags": {
+    "dt015-bad": [
+     "dateUnparsed"
+    ],
+    "dt015-good": []
+   },
+   "recordIdsOrderRowKeys": [
+    "dt015-good",
+    "dt015-bad"
+   ],
+   "rawDatePreserved": {
+    "dt015-bad": "2026/13/45"
+   },
+   "numericExpectations": {
+    "全球預計受試者人數": {
+     "raw": "1,200",
+     "typed": null,
+     "flags": [
+      "numericUnparsed"
+     ],
+     "grade": "warning"
+    }
+   },
+   "_purpose": "§6.5 日期異常類別 1（不可解析）。不可採計者置末且原值照顯示；兼 §6.6 千分位 warning"
+  },
+  {
+   "label": "DT-016",
+   "identityKeySource": "P:DT-016",
+   "rowKeys": [
+    "dt016-empty",
+    "dt016-good"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-02-02",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "dt016-good"
+   ],
+   "latestAmbiguous": false,
+   "recordFlags": {
+    "dt016-empty": [
+     "dateMissing"
+    ],
+    "dt016-good": []
+   },
+   "numericExpectations": {
+    "全球預計受試者人數": {
+     "raw": "-5",
+     "typed": null,
+     "flags": [
+      "numericImplausible"
+     ],
+     "grade": "warning"
+    }
+   },
+   "_purpose": "§6.5 日期異常類別 2（空值）；兼 §6.6 負數 warning"
+  },
+  {
+   "label": "DT-017",
+   "identityKeySource": "P:DT-017",
+   "rowKeys": [
+    "dt017-future",
+    "dt017-now"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-01-15",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "dt017-now"
+   ],
+   "latestCohortSize": 1,
+   "latestAmbiguous": false,
+   "recordFlags": {
+    "dt017-future": [
+     "dateFuture"
+    ],
+    "dt017-now": []
+   },
+   "warningExpected": "dateFuture",
+   "excludedFromGlobalSourceUpdatedAt": [
+    "dt017-future"
+   ],
+   "displayFieldRawValues": {
+    "台灣預計受試者人數": "17"
+   },
+   "mustNotEqual": {
+    "台灣預計受試者人數": "99"
+   },
+   "rawDatePreserved": {
+    "dt017-future": "2099/01/01"
+   },
+   "_purpose": "§6.5／N3 的關鍵案例。2099/01/01 不得支配卡片——卡片的台灣預計人數必須是 17（來自 2026/01/15），不是 99。此條同時是 N3 修法的唯一證據",
+   "_note": "「不晚於 build 當日」依賴 build 當日，故本 fixture 的斷言必須在測試中注入固定的 buildDate（見 harness.buildDate），否則 2099 在真實時間推進後仍成立而使本條失效"
+  },
+  {
+   "label": "DT-018",
+   "identityKeySource": "P:DT-018",
+   "rowKeys": [
+    "dt018-a",
+    "dt018-b"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": null,
+   "dateUnknown": true,
+   "latestCohortRowKeys": [
+    "dt018-a",
+    "dt018-b"
+   ],
+   "latestCohortSize": 2,
+   "latestAmbiguous": true,
+   "conflictFields": [
+    "台灣預計受試者人數"
+   ],
+   "displayFieldsAbsent": [
+    "台灣預計受試者人數"
+   ],
+   "recordFlags": {
+    "dt018-a": [
+     "dateMissing"
+    ],
+    "dt018-b": [
+     "dateUnparsed"
+    ]
+   },
+   "ui": "資料日期無法辨識，請查官方來源",
+   "_purpose": "I2：dateUnknown=true 且 latestAmbiguous=true，證明兩個旗標各自獨立（v0.3 曾把兩者混為一個）"
+  },
+  {
+   "label": "DT-019",
+   "identityKeySource": "P:DT-019",
+   "rowKeys": [
+    "dt019-a",
+    "dt019-b"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": null,
+   "dateUnknown": true,
+   "latestCohortRowKeys": [
+    "dt019-a",
+    "dt019-b"
+   ],
+   "latestAmbiguous": false,
+   "conflictFields": [],
+   "displayFieldsPresent": "all13",
+   "recordFlags": {
+    "dt019-a": [
+     "dateMissing"
+    ],
+    "dt019-b": [
+     "dateUnparsed"
+    ]
+   },
+   "_purpose": "I2 的另一半：dateUnknown=true 但 latestAmbiguous=false。兩列的 資料更新時間 不同（\"\" vs \"not-a-date\"）卻不算衝突——這正好驗證 §6.4 的 13 欄封閉集合真的排除了 資料更新時間"
+  },
+  {
+   "label": "PD-020",
+   "identityKeySource": "P:PD-020",
+   "rowKeys": [
+    "pd020"
+   ],
+   "recordCount": 1,
+   "latestSourceDate": "2026-03-10",
+   "latestAmbiguous": false,
+   "periodOrderAnomaly": true,
+   "warningExpected": "periodEndBeforeStart",
+   "displayFieldRawValues": {
+    "試驗預計執行期間起": "2026/06/01",
+    "試驗預計執行期間迄": "2025/06/01"
+   },
+   "mustNotSwap": true,
+   "ui": "期間起迄順序異常",
+   "_purpose": "§6.5 日期異常類別 4（end < start，實測母體 7 列）。兩值原樣顯示，不自動交換、不隱藏"
+  },
+  {
+   "label": "NUM-022",
+   "identityKeySource": "P:NUM-022",
+   "rowKeys": [
+    "num022-empty",
+    "num022-neg"
+   ],
+   "recordCount": 2,
+   "latestSourceDate": "2026-03-20",
+   "dateUnknown": false,
+   "latestCohortRowKeys": [
+    "num022-empty",
+    "num022-neg"
+   ],
+   "latestCohortSize": 2,
+   "latestAmbiguous": "__SPEC_GAP__",
+   "conflictFields": "__SPEC_GAP__",
+   "numericExpectations": {
+    "全球預計受試者人數__num022-empty": {
+     "raw": "",
+     "typed": null,
+     "flags": [
+      "numericMissing"
+     ],
+     "grade": "normal"
+    },
+    "全球預計受試者人數__num022-neg": {
+     "raw": "-5",
+     "typed": null,
+     "flags": [
+      "numericImplausible"
+     ],
+     "grade": "warning"
+    }
+   },
+   "nearDuplicateGroup": null,
+   "protocolNonIdentifier": false,
+   "_purpose": "GAP-5 的證據：同日兩列唯一差異是 全球預計受試者人數 \"\" vs \"-5\"，兩者 typed 皆為 null（都是「未提供」）。依 §6.4 的「比正規化 raw」會判為衝突並把該欄位從卡片抽掉，使用者看到「同日多筆資料不一致」——但兩筆其實都只是沒有有效數值，這是假警報。",
+   "_gap": "GAP-5：latestAmbiguous 與 conflictFields 照 §6.4 現行文字應為 true／[全球預計受試者人數]，但那是錯的行為，故 oracle 不填期望值，等規格修訂。"
+  },
+  {
+   "label": "TXT-021A",
+   "identityKeySource": "P:TXT-021A",
+   "rowKeys": [
+    "txt021-na1"
+   ],
+   "recordCount": 1,
+   "textSentinel": {
+    "排除條件": {
+     "raw": "N/A",
+     "class": "literal-NA-slash"
+    }
+   },
+   "_purpose": "C3：N/A／NA／空 三類互相可區分"
+  },
+  {
+   "label": "TXT-021B",
+   "identityKeySource": "P:TXT-021B",
+   "rowKeys": [
+    "txt021-na2"
+   ],
+   "recordCount": 1,
+   "textSentinel": {
+    "排除條件": {
+     "raw": "NA",
+     "class": "literal-NA"
+    }
+   }
+  },
+  {
+   "label": "TXT-021C",
+   "identityKeySource": "P:TXT-021C",
+   "rowKeys": [
+    "txt021-empty"
+   ],
+   "recordCount": 1,
+   "textSentinel": {
+    "排除條件": {
+     "raw": "",
+     "class": "empty"
+    }
+   }
+  }
+ ],
+ "nearDuplicateGroups": {
+  "MK3475158": [
+   "MK-3475-158",
+   "MK3475-158"
+  ],
+  "9785CL0123": [
+   "9785-CL- 0123",
+   "9785-CL-0123"
+  ],
+  "RORPH301APD811301": [
+   "ROR-PH-301(APD811-301",
+   "ROR-PH-301(APD811-301)"
+  ],
+  "_count": 3,
+  "_note": "A9 另要求斷言 loose key 不影響任何收斂結果——做法是在偵測開啟與關閉兩種情況下，trials[].rowKeys 的完整 group membership 必須相同"
+ },
+ "qualityReportExpectations": {
+  "textSentinelCounts": {
+   "排除條件": {
+    "N/A": 3,
+    "NA": 1,
+    "empty": 2
+   }
+  },
+  "dateAnomalyCounts": {
+   "dateUnparsed": 3,
+   "dateMissing": 3,
+   "dateFuture": 1,
+   "periodEndBeforeStart": 1
+  },
+  "numericAnomalyCounts": {
+   "numericUnparsed": 2,
+   "numericImplausible": 3,
+   "numericMissing": 5,
+   "sourceZero": 2
+  },
+  "categoricalSentinelCounts": {
+   "臨床試驗期別": 1,
+   "本臨床試驗規模": 1
+  },
+  "protocolNonIdentifierRowCount": 5,
+  "suspectedUpstreamTestRowCount": 1,
+  "nearDuplicateGroupCount": 3,
+  "_note": "計數為**實測全部 50 列**的結果，不是「為該案例設計的列數」——初版 oracle 只數了刻意設計的列，漏掉其他列的附帶出現（N/A 寫 1 實際 3、numericMissing 寫 2 實際 5），由 check_a_core.py 抓出。numericMissing/Unparsed/Implausible/sourceZero 是**欄位出現次數**（兩個數值欄位各自計），非列數。protocolNonIdentifier 的列數 5 成立與否取決於 GAP-4。"
+ },
+ "determinism": {
+  "permutations": [
+   "asIs",
+   "reversed",
+   "seed-1",
+   "seed-2",
+   "seed-3"
+  ],
+  "assertOrder": [
+   "輸出檔案 inventory 完全相同（先斷言集合，再逐檔 hash——漏一個輸出檔時不完整的 hash 清單會放過它）",
+   "每個輸出檔 SHA-256 相同",
+   "每個 tie case 的 latestAmbiguous／conflictFields／displayFields 相同"
+  ],
+  "_purpose": "A3"
+ },
+ "reverseSentinel": {
+  "mutation": "把同日處置改為「任取 cohort 第一筆為 latest」",
+  "mustFailAt": {
+   "trial": "BIG-001",
+   "assertion": "latestAmbiguous 由 true 變 false",
+   "alsoMustFail": [
+    "displayFields 出現 台灣預計受試者人數 或 納入條件 的具體值",
+    "stats 的 conflicted 計數減少",
+    "篩選分組由「不一致」變為具體值"
+   ]
+  },
+  "mustNotCountAsKill": "任意位元差異（例如 JSON 陣列順序改變）",
+  "_purpose": "A4"
+ },
+ "harness": {
+  "buildDate": "2026-09-18",
+  "_why": "§6.5 的「不晚於 build 當日」依賴當日日期。若不注入固定 buildDate，DT-017 的 2099/01/01 案例會隨真實時間推進而繼續成立，但任何以「相對今天」寫死的斷言都會漂移；且 §11 要求 fixture 為凍結資料，浮動的 build 當日與此矛盾。"
+ },
+ "specGaps": [
+  {
+   "id": "GAP-1",
+   "severity": "High",
+   "where": "§6.4 displayFields 的定義",
+   "trigger": "WS-003",
+   "problem": "衝突判定用正規化值、顯示用 raw 值。當兩列正規化後相同但 raw 不同時（實測母體 14 組），「latestCohort 內無衝突呈現欄位的共同 raw 值」不存在——沒有共同 raw 值可取。",
+   "consequence": "oracle 寫不出 WS-003 的 displayFields 應為哪一個字串。實作只能自行挑一個，且不同實作會挑不同的，A3 的跨排列一致性也可能因此失效。",
+   "proposedFix": "明定：正規化後相同而 raw 不同時，取 latestCohort 中 recordId 字典序最小者的 raw 值，並在該欄位加 rawVariants:true，詳情頁列出全部變體。"
+  },
+  {
+   "id": "GAP-2",
+   "severity": "Medium",
+   "where": "§6.3 identity key 的 #k 序號",
+   "trigger": "EMPTY-UNIQ vs EMPTY-DUP",
+   "problem": "「若多列 content hash 相同時附加出現序號 #k」——單一列時是否帶 #0 未寫明。",
+   "consequence": "若單列不帶後綴，則未來出現一筆內容相同的新列時，原本的 H:x 會變成 H:x#0，URL 失效。這與 §6.3 的「只保證對相同快照穩定」相容，但屬可避免的不穩定。",
+   "proposedFix": "一律帶序號（單列即 #0），使 ID 形狀不隨鄰居增減而改變。"
+  },
+  {
+   "id": "GAP-3",
+   "severity": "High",
+   "where": "§6.4 Trial 結構與 §9.3 的 Trial schema",
+   "trigger": "未列編號（分類 sentinel）",
+   "problem": "displayFields 只寫「共同 raw 值」，但 §6.6 要求分類 sentinel 的 typed value 為 null、UI 顯示「未提供」。raw（\"0\"）、typed（null）、UI 文字三者不同，而 §9.3 的 schema 沒說 displayFields 帶哪一種，也沒說前端從哪裡取 typed。",
+   "consequence": "C1 要求「卡片顯示未提供」，但若 displayFields 只有 raw \"0\"，前端得自己重做一次 sentinel 判定——判定邏輯會出現在兩處且可能分歧。",
+   "proposedFix": "displayFields 每個欄位存 {raw, typed, flags} 三元組，前端不重做判定；§9.3 的 schema 明寫此形狀。"
+  },
+  {
+   "id": "GAP-4",
+   "severity": "Medium",
+   "where": "§6.2.2 與 §6.3 的關係",
+   "trigger": "EMPTY-DUP／EMPTY-UNIQ",
+   "problem": "§6.2.2 說「protocol 值不含任何英數字元時標記 protocolNonIdentifier」。空字串是這條的退化情形，但 §6.3 已對空 protocol 走另一條 H: 分支。空 protocol 到底算不算 protocolNonIdentifier 未寫明。",
+   "consequence": "影響統計「未提供編號」類別的分母（本 fixture 差 3 列），也影響 E8 的 UI 斷言對象。",
+   "proposedFix": "明寫空 protocol 也算 protocolNonIdentifier，兩者是同一個「來源未提供編號」概念的兩種表現；或反之明確排除並說明理由。"
+  },
+  {
+   "id": "GAP-5",
+   "severity": "Medium",
+   "where": "§6.4 衝突比較模式套用於數值與分類欄位",
+   "trigger": "設計 DT-018／IND-005 時發現",
+   "problem": "§6.4 規定以「NFKC + 移除全部空白」的 raw 字串判定衝突。對文字欄位合理，但對數值與分類欄位會產生假衝突：同日兩列若一列為 \"\" 一列為 \"-5\"，兩者 typed 都是 null（皆為「未提供」），raw 卻不同 → 判為衝突 → 該欄位被從卡片抽掉。",
+   "consequence": "使用者看到「同日多筆資料不一致」，但實際上兩筆都只是沒有有效數值。這是假警報，且 §6.4 的目的正是要避免假警報（那 14 組空白差異就是為此排除的）。",
+   "proposedFix": "衝突判定改為分型：文字欄位比正規化 raw；數值與分類欄位比 typed value（兩者皆 null 即不衝突），但 raw 不同時加 rawVariants 標記。"
+  },
+  {
+   "id": "GAP-6",
+   "severity": "High",
+   "where": "§11 A8",
+   "trigger": "嘗試建構 A8 的 fixture",
+   "problem": "A8 要求「注入不同 identity key 但 trialId 前 16 hex 相同的 fixture」。找出 SHA-256 的 64 位元截短碰撞需約 2^32 次雜湊運算（Pollard-rho 類方法為 O(2^32) 時間、O(1) 記憶體；生日表法另需數十 GB 記憶體）。這在單元測試的 fixture 中不實際，且產物會是一對無意義的不透明字串。",
+   "consequence": "A8 目前**無法以凍結 fixture 滿足**。照原文寫下去，實作者只會跳過它或偽造一個假案例，碰撞偵測分支永遠沒有測試守著。",
+   "proposedFix": "A8 改為「以注入的雜湊函式（測試替身，刻意截短為極少位元）驅動碰撞偵測分支，斷言回傳 ID_TRUNCATION_COLLISION 且不發布」，並在規格註明此條刻意不使用凍結資料、原因是真實碰撞不可建構。同時 §11 開頭的「全部 fixture 為凍結資料」需加上這個例外。"
+  },
+  {
+   "id": "GAP-7",
+   "severity": "Medium",
+   "where": "§6.5 的「不晚於 build 當日」與 §11 的凍結 fixture 原則",
+   "trigger": "DT-017",
+   "problem": "可採計日期的定義依賴 build 當日，但 fixture 必須凍結。若不注入固定的 build 當日，未來日期的判定會隨真實時間漂移；而 2099 這種極端值雖然短期安全，卻使測試無法驗證「剛好晚一天」的邊界。",
+   "consequence": "未來日期的邊界（build 當日、當日+1）目前無法測試。",
+   "proposedFix": "規格明定 build 當日為可注入參數，且驗收須包含 build 當日、當日+1 兩個邊界案例（當日為可採計、當日+1 不可採計）。"
+  }
+ ]
+}

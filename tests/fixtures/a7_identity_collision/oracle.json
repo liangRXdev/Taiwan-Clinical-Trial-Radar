@@ -1,0 +1,57 @@
+{
+ "_about": "A7：identity normalization 碰撞必須硬失敗。對應 plan.md v0.4 §6.2 與 §11 A7。",
+ "_note": "此 fixture 的預期結果是「整個 build 失敗」，故不描述 Trial 結構。",
+
+ "input": {
+  "file": "input.csv",
+  "rows": [
+   { "rowKey": "coll-lower", "臨床試驗計畫書編號": "abc-1", "_note": "identityNormalize → \"ABC-1\"" },
+   { "rowKey": "coll-upper", "臨床試驗計畫書編號": "ABC-1", "_note": "identityNormalize → \"ABC-1\"，與上列相同但 raw 不同" },
+   { "rowKey": "coll-width", "臨床試驗計畫書編號": "ＡＢＣ－２", "_note": "全形；NFKC → \"ABC-2\"" },
+   { "rowKey": "coll-ascii", "臨床試驗計畫書編號": "abc-2", "_note": "identityNormalize → \"ABC-2\"，與上列相同但 raw 不同" },
+   { "rowKey": "ok-control", "臨床試驗計畫書編號": "OK-9", "_note": "無碰撞的對照列；不得因它存在而使失敗被吞掉" }
+  ]
+ },
+
+ "expected": {
+  "exitCodeNonZero": true,
+  "errorCode": "IDENTITY_COLLISION",
+  "layer": "content",
+  "mergedIntoOneTrial": false,
+  "publishedStateUnchanged": {
+   "fileNameSet": "unchanged",
+   "perFileSha256": "unchanged",
+   "manifestFilesPointer": "unchanged",
+   "overallDigest": "unchanged",
+   "noNewOfficialFiles": true
+  },
+  "collisionReport": {
+   "path": "qa/collision-report.json",
+   "mustNotBeEmpty": true,
+   "groupCount": 2,
+   "groups": [
+    {
+     "identityNormalizedValue": "ABC-1",
+     "rawProtocols": ["abc-1", "ABC-1"],
+     "sourceRowKeys": ["coll-lower", "coll-upper"],
+     "mustIncludeSourceFingerprint": true
+    },
+    {
+     "identityNormalizedValue": "ABC-2",
+     "rawProtocols": ["abc-2", "ＡＢＣ－２"],
+     "sourceRowKeys": ["coll-width", "coll-ascii"],
+     "mustIncludeSourceFingerprint": true
+    }
+   ]
+  }
+ },
+
+ "weakenedImplementationsThatMustFail": [
+  "只斷言 collision-report.json 存在（空 JSON 或只含 error code 也會通過——A7 明文要求唯一定位每個 group 與全部 raw 值）",
+  "只回報第一個 collision group 就結束（本 fixture 刻意放兩組，report 必須有 2 組）",
+  "把 abc-1 與 ABC-1 合併成一個 Trial 並只發 warning（§6.2 要求硬失敗，合併會誤配）",
+  "硬失敗但已經覆寫了部分正式檔（publishedStateUnchanged 的四項斷言會抓到）"
+ ],
+
+ "_designNote": "本 fixture 同時是 A1 的反面對照：A1 的「不應合併」案例必須用 §6.2 不折疊的差異（連字號／空白／括號，見 a_core），而大小寫與全半形差異會被折疊，屬本檔的 collision 案例。第一輪規格把兩者混為一談（Codex X1），這兩個 fixture 的存在就是那項判定的落實。"
+}

@@ -15,7 +15,21 @@
 - [x] 第二輪 `/codex-checkplan`，只審 v0.2 → v0.3 的變更（`plan-review-r2.md`，54 項、**Blocker 0**）
 - [x] 第二輪判定（`plan-verdict-r2.md`，接受 53／部分接受 1／拒絕 0）；三項第一輪偏離被否決並改正
 - [x] 依判定改寫為 v0.4
-- [ ] **第三輪 `/codex-checkplan`，限縮範圍**：只審發布與快取契約（§9.2）、ID 契約（§6.3）、呈現欄位集合與衝突比較模式（§6.4）、日期模型（§6.5）、逐檔輸出 schema（§9.3）與搜尋分層（§8.5）。**不再重審全部驗收條件**——精確度到此程度後，寫 fixture 比再讀一遍 prose 更能找出問題
+- [x] 先寫 A 群 fixture 反驗規格（`tests/fixtures/`，50 列／29 Trial ＋ A7 碰撞 fixture；`check_a_core.py` 全綠）。找到 **7 個規格洞**，見 `.ai-review/fixture-findings-a.md`
+- [ ] **第三輪 `/codex-checkplan`，限縮範圍**：只審發布與快取契約（§9.2）、ID 契約（§6.3）、呈現欄位集合與衝突比較模式（§6.4）、日期模型（§6.5）、逐檔輸出 schema（§9.3）、搜尋分層（§8.5），**並一併送審 fixture 找到的 7 個洞**——它們全落在同一範圍，分兩次審會讓 §6.4 被改兩輪
+- [ ] 依第三輪判定產出 v0.5
+
+### A 群 fixture 反驗出的 7 個規格洞（待第三輪一併處理）
+
+| # | 嚴重度 | 問題 |
+|---|---|---|
+| GAP-1 | High | §6.4 的 `displayFields` 在「正規化後相同、raw 不同」時無定義（實測母體 14 組） |
+| GAP-3 | High | `displayFields` 存 raw／typed／三元組未定義，前端得重做一次 sentinel 判定 |
+| GAP-6 | High | **A8 無法以凍結 fixture 滿足**——64 位元雜湊碰撞需約 `2^32` 次運算 |
+| GAP-2 | Medium | 單一空 protocol 列是否帶 `#0` 後綴未定義（影響 ID 是否隨鄰居增減而改變） |
+| GAP-4 | Medium | 空 protocol 算不算 `protocolNonIdentifier`（本 fixture 計數差 3 列） |
+| GAP-5 | Medium | 衝突比較套用於數值欄位會產生假警報（`""` vs `"-5"` 兩者 typed 皆 null 卻判衝突） |
+| GAP-7 | Medium | 「不晚於 build 當日」與凍結 fixture 相牴觸，且「剛好晚一天」的邊界無法測 |
 
 ### 已定案（原未定案項）
 
@@ -38,7 +52,8 @@
 然後：
 
 - [ ] `git init` 後首個 commit 已完成；建 GitHub repo（public／private 待定）
-- [ ] `.gitignore`（排除下載的 ZIP／CSV 與大型 QA 檔）、`LICENSE`、`pyproject.toml`、`package.json`
+- [x] `.gitignore`（排除下載的 ZIP／CSV 與產生物）
+- [ ] `LICENSE`、`pyproject.toml`、`package.json`
 - [ ] `scripts/fetch_tfda.py` — fail-closed 下載與驗證，error code 依 §9.5，每種相異 exit code
 - [ ] `scripts/validate_schema.py` — 釘住 16 欄欄名與順序
 - [ ] `scripts/build_data.py` — identity 收斂、cohort 與 ambiguity 判定、sentinel 分型、日期規則、產出 §9.3 全部 artifact
@@ -49,6 +64,8 @@
 
 ### 測試（fixture 驅動，不連網）
 
+A 群 fixture **已建立**（`tests/fixtures/a_core/`、`a7_identity_collision/`），以下是待寫的**測試**本身：
+
 - [ ] A1 fingerprint → trialId 的 group membership。「不應合併」反例用 §6.2 **不折疊**的差異（連字號／空格／括號閉合），**不可**用大小寫或全半形（那些會折疊，屬 A7）
 - [ ] A2 每個案例附 oracle；必含 ≥2 筆完全相同空 protocol、≥3 組同日衝突、≥1 組同日正規化後全同、**≥1 組同日僅空白／全半形差異（須判為不衝突）**、≥1 個 `nearDuplicateGroup`、≥1 筆 `protocolNonIdentifier`、**四類日期異常各 ≥1**（不可解析／空值／未來日期／end<start）
 - [ ] A3 reverse + ≥3 seed + 「重複列 × 平手 × 空 protocol」交叉 property invariant → 檔案 inventory 相同 + 逐檔 hash 相同 + tie case 語意相同
@@ -56,7 +73,7 @@
 - [ ] A5 canonical fingerprint 完整 multiset 含 multiplicity；oracle 的 row identity **獨立於 §6.3 的 serialization**（否則自我驗證）；含分隔符／長度前綴邊界 fixture
 - [ ] A6 兩筆相同空 protocol 各取得唯一 ID
 - [ ] A7 identity 碰撞 → `IDENTITY_COLLISION` 硬失敗，且 collision report 須唯一定位 group／raw 值／正規化值／fingerprint（**空 report 要使測試失敗**）
-- [ ] A8 trialId／recordId 16-hex 截短碰撞 → `ID_TRUNCATION_COLLISION`
+- [ ] A8 trialId／recordId 截短碰撞 → `ID_TRUNCATION_COLLISION`。**改以注入的雜湊替身驅動**（真實 64 位元碰撞不可建構，見 GAP-6），規格待第三輪修訂後定案
 - [ ] A9 `nearDuplicateGroup` 偵測 18 組實測案例；`protocolNonIdentifier` 不入 group；loose key **不影響任何收斂結果**
 - [ ] B1 §9.5 每個 error code 各一測試；斷言已發布狀態未變（檔名集合、每檔 hash、`manifest.files` 指向、整體 digest）且**無新增正式檔**；content-type 測 `application/zip;charset=utf-8` 通過、`text/html` 失敗
 - [ ] B2 structured error code + layer，不以 stderr 字串判定；**多重異常 fixture 驗 precedence**（transport→archive→decode→schema→content→publish）

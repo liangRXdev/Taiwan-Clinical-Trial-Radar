@@ -1,0 +1,14 @@
+# 下載的來源資料（42 MB ZIP / 166 MB CSV），不進版控
+*.zip
+205_*.csv
+
+# 產生物
+public/data/
+qa/
+node_modules/
+__pycache__/
+.venv/
+dist/
+
+# 暫存輸出
+tests/fixtures/_*.txt
