@@ -6,13 +6,13 @@
 
 本輪反驗出 **GAP-8（High）／GAP-9／GAP-10／GAP-11（Medium）／GAP-12（Low）**，全部 open，見 `.ai-review/fixture-findings-m05.md`。
 
-M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三支 CLI（`fetch_tfda.py`／`validate_schema.py`／`build_data.py`）。**pytest 199 綠**，fixture 自檢 `run_all.py` 289 條斷言全綠。
+M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三支 CLI（`fetch_tfda.py`／`validate_schema.py`／`build_data.py`）。**pytest 202 綠**，vitest 105 綠，Playwright 54 綠（production），fixture 自檢 `run_all.py` 289 條斷言全綠。
 
 **2026-09-21 首次連網實跑撞出兩個規格洞，已改為 v0.8**（見 `plan.md` §15）：§6.2 的碰撞規則照字面使管線 exit 22 一次都跑不完；§6.4.5 與 F3 直接衝突，照 §6.4.5 實作的 index 是 F1 門檻的 10.2 倍。**四輪 prose 覆審與 12 個 fixture GAP 都沒抓到這兩個**——fixture 是照規格寫的，規格與現實的落差它結構上看不見。
 
 實跑結果與規格的獨立實測逐一相符：5,888 Trial／18,736 列／846 平手組／143 衝突組／18 nearDuplicateGroup。
 
-下一步：**M2 前端**。
+M2-A／B／C 已完成（核心邏輯、UI、e2e）。下一步：**M2 收尾**（E2(b)／E3、E1／E4 inventory、D 群 DOM 斷言）→ **M3 CI**。
 
 **M1 前不要寫 ETL 實作程式碼**（`artifact_sample/build_sample.py` 是 B8 的證據，不是實作，M1 不得沿用）。
 
@@ -87,7 +87,7 @@ M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三�
 
 - [ ] `git init` 後首個 commit 已完成；建 GitHub repo（public／private 待定）
 - [x] `.gitignore`（排除下載的 ZIP／CSV 與產生物）
-- [ ] `LICENSE`、`pyproject.toml`、`package.json`
+- [x] `LICENSE`、`pyproject.toml`、`package.json`
 - [x] `scripts/fetch_tfda.py` — fail-closed 下載與驗證，error code 依 §9.5，每種相異 exit code
 - [x] `scripts/validate_schema.py` — 釘住 16 欄欄名與順序（含 §6.3 的 U+001F 檢查）
 - [x] **首次連網實跑**（2026-09-21）：ZIP 43,203 KiB／CSV 166,450 KiB／18,736 列，`sourceSha256` 與 QA report 見 §15。量出 F1 Tier 0 = **924.0 KiB brotli**（餘 612 KiB 給 bundle），`applicant` facet 371 bucket
@@ -126,18 +126,19 @@ A 群 fixture **已建立並補齊 v0.5 案例**（`tests/fixtures/a_core/` 73 �
 
 ## M2 — 前端 MVP（驗收 D／E／F／G 群）
 
-- [ ] 首頁單一任務搜尋；search normalization（§8.1）與 matching operator（§8.2：空白切詞、substring、空查詢不搜尋）
-- [ ] 多詞語意：**record 層 AND、欄位層 OR**，UI 顯示邏輯（§8.3）
-- [ ] **搜尋 scope 分層**（§8.5）：預設 `fields=short`+`history=latest`；擴大控制項在結果區可見、切換前顯示大小（取自 `manifest.files[*].gzipBytes`）、scope 指示持續可見、零結果提示可擴大、載入失敗退回上一個 scope
-- [ ] 命中標示（§7.2）：欄位名 + 來源紀錄日期；非最新標「命中來自 YYYY/MM/DD」；無可採計日期標「資料日期不明」**不得偽造日期**
-- [ ] 篩選六維度（§8.4）含值域、bucket 閉區間、`period` 重疊語意；**同維度 OR、跨維度 AND**；**無招募狀態維度**
-- [ ] 結果卡：`displayFields` + `latestAmbiguous`／`dateUnknown`／`protocolNonIdentifier` 標記；衝突欄位不顯示任何候選值
-- [ ] 詳情頁：全部 records 依日期分組、同日明示「順序未知」、無日期者置末；長文字保留原文換行不截斷；`nearDuplicateGroup` 顯示近似編號提示與連結
-- [ ] 統計卡以 Trial 為分母並明寫「試驗」；`buckets + unprovided + conflicted` 須等於 `denominators.trials`
-- [ ] URL state schema（§7.4）：參數名／順序／編碼／重複參數／未知參數保留／無效值明確訊息；`?protocol=` 以 identity 正規化後比對並導向 canonical
-- [ ] 免責三項核心性質在三個頁面可見（§10），可見性綁定 G1／G2 oracle
-- [ ] 數字卡與清單為必須；**圖表可選**，依 payload 與 a11y 成本決定
-- [ ] D1–D7、E1–E8、F1–F4、G1–G4 測試
+- [x] 首頁單一任務搜尋；search normalization（§8.1）與 matching operator（§8.2）
+- [x] 多詞語意：**record 層 AND、欄位層 OR**（§8.3）
+- [x] **搜尋 scope 分層**（§8.5，改檔案集合模型）：預設 `fields=short`+`history=latest`；擴大控制項在結果區可見、切換前顯示大小（取自 `manifest.files[*].gzipBytes`）、scope 指示持續可見、零結果提示可擴大、載入失敗退回上一個 scope
+- [x] 命中標示（§7.2）：欄位名 + 來源紀錄日期；非最新標「命中來自 YYYY/MM/DD」；無可採計日期標「資料日期不明」**不得偽造日期**
+- [x] 篩選六維度（§8.4；applicant 371 bucket 採可搜尋計數清單）含值域、bucket 閉區間、`period` 重疊語意；**同維度 OR、跨維度 AND**；**無招募狀態維度**
+- [x] 結果卡：`displayFields` + `latestAmbiguous`／`dateUnknown`／`protocolNonIdentifier` 標記；衝突欄位不顯示任何候選值
+- [x] 詳情頁：全部 records 依日期分組、同日明示「順序未知」、無日期者置末；長文字保留原文換行不截斷；`nearDuplicateGroup` 顯示近似編號提示與連結
+- [x] 統計卡以 Trial 為分母並明寫「試驗」（加不起來時停止顯示該卡）；`buckets + unprovided + conflicted` 須等於 `denominators.trials`
+- [x] URL state schema（§7.4）：參數名／順序／編碼／重複參數／未知參數保留／無效值明確訊息；`?protocol=` 以 identity 正規化後比對並導向 canonical
+- [x] 免責三項核心性質在三個頁面可見（§10），G1／G2 已綁定
+- [x] 數字卡與清單（**圖表未做，規格允許的可選項**）
+- [x] G1／G2／G3、E5～E8、D7、F4；分批渲染後 F4 最差 p95 71.3 ms
+- [ ] **M2 收尾**：E2(b)／E3 的 metadata surface、E1／E4 完整 inventory、D1–D6／D8 的 DOM 斷言
 
 ## M3 — CI 與月更新（驗收 H 群）
 
