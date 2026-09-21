@@ -144,7 +144,10 @@ button:focus-visible {
 .scope__option { font-size: 0.82rem; display: flex; align-items: baseline; gap: 0.4rem; }
 .scope__cost { color: var(--text-muted); font-size: 0.74rem; }
 .zero-hint { margin-top: 1rem; }
-.link-btn { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+/* **在米色裸底上**：--accent 只有 4.26:1，一律 --accent-hover（5.29:1）。
+   G2 的實算在 2026-09-21 抓到這三處——house style 早就寫了這條限制，是我漏套。 */
+.link-btn { background: none; border: 0; padding: 0; color: var(--accent-hover); cursor: pointer; font: inherit; text-decoration: underline; }
+.zero-hint .scope__cost { color: var(--text-primary); }
 
 /* ---------------------------------------------------------------- filters */
 
@@ -165,6 +168,9 @@ button:focus-visible {
 
 /* ---------------------------------------------------------------- stats */
 
+/* .stats 是裸底容器，其直屬 .hint 不可用 --text-muted（4.26:1）。
+   卡片內的 .hint 不受影響（白底 4.83:1）。 */
+.stats > .hint { color: var(--text-primary); }
 .card--stat { padding: 1rem; }
 .stat__table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .stat__table th, .stat__table td { border: 1px solid var(--border); padding: 0.35rem 0.5rem; text-align: left; }
@@ -210,4 +216,16 @@ button:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* ---------------------------------------------------------------- 分批渲染 */
+
+.more { margin-top: 1rem; }
+/* 在米色裸底上：不可用 --text-muted（4.26:1） */
+.more__status { font-size: 0.8rem; margin: 0 0 0.4rem; color: var(--text-primary); }
+.more-btn {
+  font: inherit; font-size: 0.85rem; cursor: pointer;
+  background: var(--bg-card); color: var(--accent-hover);
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  padding: 0.45rem 0.9rem;
 }

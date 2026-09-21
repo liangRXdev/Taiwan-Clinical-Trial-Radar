@@ -108,9 +108,17 @@ export function renderScopeBar(opts: ScopeBarOptions): HTMLElement {
 }
 
 /** 4. 零結果時的擴大提示。**列出每個方向與其大小**，不是只說「試試看別的」。 */
-export function renderZeroResultHint(opts: ScopeBarOptions): HTMLElement | null {
+export function renderZeroResultHint(opts: ScopeBarOptions): HTMLElement {
   const wider = widerScopes(opts.scope);
-  if (wider.length === 0) return null;
+
+  // **已在最大範圍時仍要說話。** 原本回 null 等於畫面什麼都沒有，而零結果加空白
+  // 最常見的解讀是「還在載入」——使用者會等，然後以為工具壞了。
+  // 這裡也是唯一該講「查無結果不代表不存在」的地方：本站只有一個資料來源。
+  if (wider.length === 0) {
+    return el("div", { class: "zero-hint zero-hint--widest" }, [
+      chip("info", SCOPE.zeroAtWidest),
+    ]);
+  }
 
   return el("div", { class: "zero-hint" }, [
     chip("info", SCOPE.zeroHint),

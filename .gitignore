@@ -19,3 +19,6 @@ tests/fixtures/_*.txt
 .pytest_cache/
 .tmp-verify/
 .staging/
+reports/
+test-results/
+playwright-report/

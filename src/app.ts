@@ -29,6 +29,21 @@ import { renderStats } from "./ui/stats.js";
 import { LABEL } from "./ui/text.js";
 
 const DATA_BASE = "data";
+
+/**
+ * 一次渲染的結果卡數上限。
+ *
+ * 2026-09-21 F4 實測：渲染時間隨**卡片數**線性成長（約 0.15 ms／張），與 scope 或
+ * 資料量無關——「臨床」在 all+all 命中 2,616 個試驗、407 ms，超過 300 ms 門檻。
+ * 搜尋本身不是瓶頸（乳癌 273 張只要 127 ms）。
+ *
+ * **總數照實顯示**，分批只影響一次畫多少張。把總數也截成 50 會讓使用者以為
+ * 只有 50 個試驗符合——那是誤導，比慢更嚴重。
+ *
+ * 不進 URL state：§7.4 的參數表是經五輪覆審定案的契約，為一個純顯示層的
+ * 批次大小去動它不划算；重新整理回到第一批是可接受的代價。
+ */
+const PAGE_SIZE = 50;
 const VERSION_MISMATCH = "資料版本不一致，請重新載入";
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -45,6 +60,7 @@ function assertVersion(obj: { datasetVersion: string }, manifest: Manifest, path
 }
 
 export class App {
+  private shown = PAGE_SIZE;
   private manifest!: Manifest;
   private index!: TrialsIndex;
   private stats!: Stats;
@@ -121,6 +137,8 @@ export class App {
   }
 
   private navigate(next: AppState): void {
+    // 條件一變就回到第一批：沿用舊的 shown 會讓新結果一次畫出上百張
+    this.shown = PAGE_SIZE;
     this.state = next;
     history.pushState(null, "", buildUrl(next) || location.pathname);
     void this.onNavigate();
@@ -194,13 +212,38 @@ export class App {
     });
     input.addEventListener("change", () => this.navigate({ ...this.state, q: input.value }));
 
+    const visible = hits.slice(0, this.shown);
     const list = el(
       "div",
       { class: "results", id: "results" },
-      hits.map((h) =>
+      visible.map((h) =>
         renderCard(h, { detailHref: (id) => buildUrl({ ...this.state, trial: id, q: this.state.q }) }),
       ),
     );
+
+    let more: HTMLElement | null = null;
+    if (hits.length > visible.length) {
+      const remaining = hits.length - visible.length;
+      const button = el("button", {
+        type: "button",
+        class: "more-btn",
+        text: `載入更多（再 ${Math.min(PAGE_SIZE, remaining)} 筆，尚有 ${remaining} 筆）`,
+      });
+      button.addEventListener("click", () => {
+        this.shown += PAGE_SIZE;
+        this.renderSearchPage();
+        // 焦點不得因為重畫而遺失（G3）
+        document.querySelector<HTMLElement>(".more-btn")?.focus();
+      });
+      more = el("div", { class: "more" }, [
+        el("p", {
+          class: "more__status",
+          // **總數照實說**，並明示目前只畫了幾張
+          text: `目前顯示 ${visible.length} 筆，共 ${hits.length} 筆符合`,
+        }),
+        button,
+      ]);
+    }
 
     mount(
       this.root,
@@ -250,6 +293,7 @@ export class App {
             }),
             hits.length === 0 ? renderZeroResultHint(this.scopeBarOptions()) : null,
             list,
+            more,
             renderStats(this.stats),
           ]),
         ]),
