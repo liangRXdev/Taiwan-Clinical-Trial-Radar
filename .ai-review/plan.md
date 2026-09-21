@@ -1,8 +1,8 @@
-# Taiwan Clinical Trial Radar — 規格 v0.8（consolidated）
+# Taiwan Clinical Trial Radar — 規格 v0.9（consolidated）
 
 > **這是唯一具規範效力的規格。** `Taiwan-Clinical-Trial-Radar-spec.md` v0.1 與本檔 v0.2–v0.4 均降為歷史文件，**不再具 normative 效力**。
 > 依據：2026-09-18 dataset 205 實測 ＋ Codex **四輪**覆審（`plan-review-r1`～`r4.md`、`plan-verdict-r1`～`r4.md`）＋ fixture 反驗（`fixture-findings-a.md`、`fixture-findings-m05.md`）。
-> 狀態：**14 項動工前契約已封存**（§14）。**v0.8 由 2026-09-21 的首次連網實跑觸發**——管線在真實資料上 exit 22，並量出 §6.4.5 與 F3 的直接衝突。見 §15。
+> 狀態：**14 項動工前契約已封存**（§14）。**v0.8 由 2026-09-21 的首次連網實跑觸發**——管線在真實資料上 exit 22，並量出 §6.4.5 與 F3 的直接衝突。**v0.9 是對 v0.8 修訂本身的第五輪限縮覆審結果**（`plan-review-r5.md`／`plan-verdict-r5.md`，Blocker 1／High 8，接受 35／部分接受 4／拒絕 0）。見 §15。
 > 原狀態：M0.5 完成後撞出 GAP-8～GAP-12 並改寫為 v0.6；第四輪限縮覆審（**Blocker 0**）指出 v0.6 的修訂自造 3 個 High、6 個 Medium，本版 v0.7 已全部修訂。**四輪 Blocker 走勢：2 → 0 → 1 → 0。**
 
 ---
@@ -78,10 +78,13 @@
 |---|---|
 | **ASCII 英數字元** | 僅 `A–Z`、`a–z`、`0–9`。**不含**任何非 ASCII 字元 |
 | `nfkc(s)` | Unicode NFKC 正規化 |
+| `strip(s)` | 移除**前後**的 Unicode 空白字元。封閉定義：`White_Space=Yes` 的全部碼點（含 U+0020、U+0009、U+000A、U+000D、**U+00A0 NBSP**、**U+3000 全形空格**）。**零寬字元不算空白**（U+200B ZWSP、U+FEFF BOM、U+200C／U+200D）——它們不會被 strip 移除，因此兩個只差零寬字元的 protocol 是**碰撞**不是合併 |
 | `identityNormalize(s)` | `nfkc(strip(s))` 後轉大寫。**不做**標點移除、不做內部空白壓縮、不做前後綴剝離 |
 | `looseKey(s)` | `nfkc(s)` 後移除**所有非 ASCII 英數字元**，再轉大寫。**僅用於偵測近似 protocol，絕不用於收斂** |
 | `conflictText(s)` | `nfkc(s)` 後移除**全部空白**（含全形空白）。用於 §6.4 文字欄位的比較鍵 |
 | `searchNormalize(s)` | `nfkc(strip(s))` → casefold → 內部連續空白壓為單一空格。見 §8.1 |
+
+**`strip` 必須封存字元集合（v0.9）**：v0.8 把 `strip(raw)` 升格為「合併或硬失敗」的邊界，而在那之前它只是正規化的一個步驟，定義模糊無害。現在它決定 Trial membership、`trialId` 與 URL——不同 runtime 對 NBSP 與零寬字元的處理若有差異，同一份快照會產出不同的 Trial 集合。**零寬字元刻意排除在 strip 之外**：它們不可見，把不可見差異靜默合併等於讓兩個不同計畫書變成一個，而 fail-closed 的代價只是一次人工確認。
 
 **「ASCII 英數字元」必須明定，否則實作會相反。** Python 的 `"系統測試".isalnum()` 回傳 **`True`**（中文被視為字母）——若以 `isalnum()` 實作 §6.2.2，`系統測試` 將**不會**被標記為 `protocolNonIdentifier`，與意圖完全相反。判定一律先 `nfkc` 再套 ASCII 字元集合。
 
@@ -97,7 +100,13 @@
 
 **碰撞的定義（v0.8 修訂）**：兩列的 `strip(raw protocol)` **不同**、而 `identityNormalize` 後**相同** → 硬失敗 `IDENTITY_COLLISION` 並產出 collision report（內容契約見 §9.8），**不得合併**。（fail-closed 而非保留為不同 Trial：合併會誤配，保留兩個同鍵 Trial 會讓 URL 不唯一，硬失敗使月更新維持 last-known-good。）
 
-**僅前後空白不同者不是碰撞，直接合併為同一 Trial**，兩個 raw 值都保留在 `protocolRaw[]`，並在 QA report 記 `WHITESPACE_ONLY_PROTOCOL_VARIANT` 警告。
+**僅前後空白不同者不是碰撞，直接合併為同一 Trial**，全部 raw 值保留在 `protocolRaw[]`，並在 QA report 記 `WHITESPACE_ONLY_PROTOCOL_VARIANT` 警告。
+
+**基數封存（v0.9）**，二元案例以外的情況照此推：
+
+- `protocolRaw[]` 是 **distinct raw 值的集合**（非 multiset），依碼點昇序。出現幾列不影響其內容——**列數屬於 `recordCount`，不該在兩個地方各記一次**。
+- `WHITESPACE_ONLY_PROTOCOL_VARIANT` **以 Trial 為單位，一個 Trial 最多一則**，攜帶該 Trial 的 `trialId`、`identityNormalized` 與**全部** raw variant（不是 pair 展開）。三個以上變體仍是一則。
+- 前後同時有空白、以及「有變體但其中一個 raw 出現多列」都不改變上述兩條。
 
 > **v0.7 的規則照字面是自相矛盾的，2026-09-21 首次連網實跑才顯形。** `identityNormalize` 的定義本身含 `strip()`，「不同 raw 正規化後相同即碰撞」等於要求正規化不准折疊任何東西——那樣正規化就沒有作用。實資料 18,736 列有 **4 組**僅尾隨一個空白的 protocol（`CYTB323J12201` 15 列 vs `CYTB323J12201 ` 2 列、`BIO89-100-131` 4/3、`RMC-6236-301` 2/1、`CGMH 2311280002` 1/2），照 v0.7 字面全部硬失敗，**管線在真實資料上一次都跑不完**。
 >
@@ -116,6 +125,8 @@
 維持不自動合併（自動合併會誤配，違反寧可漏報不可誤報），但必須：
 
 1. **偵測**：以 `looseKey(protocol)` 分組。**只有當一組含 ≥2 個不同 identity key 時**才輸出 `nearDuplicateGroup`（值為該 loose key）；單一成員為 `null`。
+   **已合併 Trial 的算法（v0.9）**：一個 Trial 在 §6.2 合併後可能持有多個 raw protocol，此時 **`protocolRaw[]` 中每一個 raw 各自計算 `looseKey`**（不是只取代表值——代表值的選擇與近似判定無關，用它會讓結果取決於一個任意選擇）。該 Trial 落入其任一 raw 命中的每個 group，但**在同一 group 內只出現一次**。分組的成員單位自始至終是 **identity key**，不是 raw 值。
+   **可證明：一個 Trial 恰好落入 0 或 1 個 group**，故 `nearDuplicateGroup` 維持單值欄位。證明：同一 Trial 的各 raw 依 §6.2 只差前後空白；`looseKey` 移除**全部**非 ASCII 英數字元（含空白），因此它們的 `looseKey` **必然相同**。此性質是 `looseKey` 定義的推論，**不是額外約束**——但若日後放寬 §6.2 的合併條件（例如連內部空白也折疊），這個推論即失效，屆時必須先改回多值欄位再放寬。
 2. `looseKey` 為空字串者（protocol 不含任何 ASCII 英數字元）**不納入**任何 group，否則會把所有非編號值錯歸成一群。
 3. **QA report** 列出每個 group 的全部 raw protocol 與 trialId。
 4. **UI**：詳情頁顯示「其他寫法近似的計畫書編號」與連結。不自動合併、也不無聲漏掉。
@@ -167,11 +178,13 @@
 
 | 層級 | 條件 | error code |
 |---|---|---|
-| identity key | 不同 raw protocol → 相同 identity key | `IDENTITY_COLLISION` |
+| identity key | **依 §6.2 的碰撞定義**：不同 `strip(raw protocol)` → 相同 identity key | `IDENTITY_COLLISION` |
 | trialId | 不同 identity key → 相同 trialId（16-hex 截短碰撞） | `ID_TRUNCATION_COLLISION` |
 | recordId | 不同 canonical serialization → 相同 recordId | `ID_TRUNCATION_COLLISION` |
 
 實測 16,328 個不同紀錄的 16-hex 截短 **0 碰撞**。仍須偵測。
+
+> **第一層的比較單位是 `strip(raw protocol)`，不是 raw**（v0.9 修訂）。v0.8 改了 §6.2 卻沒同步這張表，留下**同一契約的兩份不等價定義**——而這張表是 ETL 實作最可能照著寫的那份。僅前後空白不同者在此**不得**計為碰撞。
 
 #### 6.3.5 ID 穩定性界限（須寫進 README）
 
@@ -241,6 +254,8 @@ v0.6 曾寫成「本表必須涵蓋 §9.3.3 旗標封閉集合的每一個狀態
 
 - `rawVariants` 是**欄位層級**，不是 Trial 層級。
 - **`rawVariants = true` 不代表衝突**，只表示多個 raw 值映射到同一比較鍵。
+- **只對 9 個卡片欄位輸出**（v0.9）。四個長文字欄位仍**計算**比較鍵與衝突（`conflictFields` 照收），但**不輸出 `rawVariants`**——它們不在 `displayFields` 內，而 §6.4.5 明定 `rawVariants` 只放 `displayFields[field].flags`、**不另設 Trial 層級表示**。
+  這不是資訊遺失：長文字的唯一使用者入口是詳情頁，而詳情頁本來就逐 record 顯示每一筆原文（下一條），`rawVariants` 對它沒有任何增益。**實作不得為此私自擴充 schema**；§11 C6 有專門的反向斷言堵這條路。
 - 代表值取 `latestCohort` 中 `recordId` 字典序最小者的 raw。
 - **詳情頁須呈現 cohort 中每一筆 SourceRecord 的原始值**，不得只列去重後文字而失去 record 對應。
 
@@ -280,7 +295,8 @@ index 只留 `recordCount` 與 `latestCohortCount` 兩個計數；§9.3.6 的不
 }
 ```
 
-**`displayFields` 的鍵為 9 個卡片欄位**（v0.8 修訂）＝ 13 個呈現欄位扣除 `試驗目的`、`主要評估指標`、`納入條件`、`排除條件`。那四個長文字欄位**不在 Trial 層級輸出**，詳情頁一律逐 record 從 shard 取原文（§7.3 本來就要求逐 record 呈現，不呈現「收斂後的長文字」）。
+**`displayFields` 的鍵：允許集合為 9 個卡片欄位**（v0.8 引入，v0.9 精化）＝ 13 個呈現欄位扣除 `試驗目的`、`主要評估指標`、`納入條件`、`排除條件`。
+**實際鍵集合 = 該允許集合 − `conflictFields` 中屬於這 9 欄者**，因此可以少於 9 個。寫成「恰好 9 個鍵」的 schema validator 會逼實作違反「衝突欄位完全省略」，兩條規範不可同時照字面滿足。那四個長文字欄位**不在 Trial 層級輸出**，詳情頁一律逐 record 從 shard 取原文（§7.3 本來就要求逐 record 呈現，不呈現「收斂後的長文字」）。
 
 > **這是把 §6.4.4／§6.4.5 改成與 F3 一致，不是新決策。** F3 早已要求「初始 payload 的 schema **不含這些欄位鍵**」，而 v0.7 的 §6.4.5 卻說 `displayFields` 涵蓋全部 13 個呈現欄位——兩條直接衝突，實作照 §6.4.5 寫就必然違反 F3。2026-09-21 實測坐實了代價：照字面實作的 `trials-index` 是 **15,621 KiB gzip**，其中排除條件 39.6 MiB ＋ 納入條件 37.6 MiB ＋ 主要評估指標 6.9 MiB ＋ 試驗目的 5.9 MiB 佔 raw 位元組的 **92.6%**。移出後降為 1,611 KiB gzip／915 KiB brotli。
 >
@@ -501,9 +517,20 @@ v0.3 曾同時要求「搜尋涵蓋全部歷史紀錄」「7 個可搜尋欄位�
 - **最新（`history=latest`，預設）**：只搜 `latestCohort` 內的 record
 - **全部（`history=all`）**：搜全部 record
 
-索引載入：`short`+`latest` 併入 `trials-index`（§9.3.4）不需額外載入；`all`+`latest` 載 `search-long-latest` 2,044 KiB；`short`+`all` 載 `search-short-all` 1,649 KiB；`all`+`all` 另加 `search-long-all` 5,389 KiB。
+**scope → 所需檔案集合（v0.9 定案，唯一事實）**。切換成本一律由**集合差**導出，規格不記「某個 scope 要下載幾 KiB」那種數字：
 
-**UI 硬性要求**（避免把預設縮小變成靜默漏報）：擴大 scope 的兩個控制項必須在搜尋結果區可見，不得藏在設定或選單深處；切換前顯示需下載的大小（取自 `manifest.files[*].brotliBytes`，**不得前端寫死**）；結果區持續顯示目前 scope；零結果時提示可擴大的 scope 與其大小；載入失敗則退回上一個 scope 並說明，不得靜默維持舊結果集。
+| scope | 所需檔案集合（Tier 0 三檔恆含，此處省略） |
+|---|---|
+| `short`+`latest`（預設） | ∅（`searchShortLatest` 併在 `trials-index` 內，§9.3.4） |
+| `short`+`all` | `search-short-all` |
+| `all`+`latest` | `search-long-latest` |
+| `all`+`all` | `search-short-all` ＋ `search-long-latest` ＋ `search-long-all` |
+
+**由此導出的切換成本** = `目標 scope 的集合 − 已載入集合`，再加總各檔的 `brotliBytes`。已在快取中的檔案**不得重複計入**。
+
+> **v0.8 以 scope 名稱記單一數字是有歧義的**：`all`+`all` 那格寫「＋`search-long-all` 1,840.7 KiB」，讀者無法判定那是單檔大小、從 `short`+`all` 切過去的增量、還是從預設切過去的全部額外下載——三者差距達 696 KiB。**UI 顯示低報或高報都違反改用實際編碼的初衷。** 改用集合模型後每新增一個 scope 不必再解釋一組轉換數字。
+
+**UI 硬性要求**（避免把預設縮小變成靜默漏報）：擴大 scope 的兩個控制項必須在搜尋結果區可見，不得藏在設定或選單深處；切換前顯示需下載的大小（依上表的集合差，逐檔取 `manifest.files.<entry>.brotliBytes` 加總，**不得前端寫死**；因為那是建置期估算值而非實際傳輸量，**UI 一律顯示為四捨五入的「約 X KiB」級距**，不得呈現精確到 byte 的數字）；結果區持續顯示目前 scope；零結果時提示可擴大的 scope 與其大小；載入失敗則退回上一個 scope 並說明，不得靜默維持舊結果集。
 
 ## 9. ETL、發布與輸出契約
 
@@ -634,7 +661,7 @@ v0.4 同時要求「每個非 manifest 檔案內含 `datasetVersion`」與「`da
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 1,   // 見本節末的 schemaVersion 適用說明
   "datasetVersion": "<16 hex>",
   "artifactDigest": "<64 hex>",
   "sourceDatasetId": 205,
@@ -657,9 +684,16 @@ v0.4 同時要求「每個非 manifest 檔案內含 `datasetVersion`」與「`da
 }
 ```
 
-`files[*].brotliBytes` 是 §8.5 的 UI 顯示下載大小的來源，**不得在前端寫死**。**顯示 brotli 而非 gzip**（v0.8 修訂）：Cloudflare Pages 對 JSON 實際送 brotli，顯示 gzip 等於對使用者高報約 43%，而 §8.5 那個數字存在的唯一目的就是讓使用者在切換 scope 前知道要付多少。`gzipBytes` 保留供 CI 對照與無 brotli 的部署環境 fallback。
+**`brotliBytes` 是 deterministic 的建置期估算值，不是實際傳輸大小**（v0.9 修訂，**Blocker 級修正**）：
 
-**`brotliBytes` 只算 5 個 top-level 檔**（quality 11）。256 個 shard 不算：它們不在 §8.5 的 scope 切換器上、也不在 F1 的 Tier 0 內，而對全部 shard 跑 quality 11 會讓月更新多花數分鐘卻沒有任何讀者。
+- 定義：對該檔**最終位元組**以 **brotli quality 11** 壓縮後的長度。由 artifact 契約完全決定，可被任何人獨立重算（§9.3.6 I8）。
+- **它不等於使用者實際下載的位元組。** Cloudflare 的動態壓縮品質、內容協商與小檔門檻都不在本專案控制範圍內（實務上動態壓縮約 q4–q5，**比 q11 大**）。
+- 因此：**F1 的唯一 oracle 是部署端實際 response 的實收位元組**（見 F1）；`brotliBytes` 只用於 §8.5 的 UI 級距顯示與 F2 的基線比較。**兩者不得互稱，也不得相加。**
+- `gzipBytes` 保留**純供 CI 對照**，不具任何 UI 語意。（v0.8 曾寫它是「無 brotli 部署環境的 fallback」——本專案部署目標唯一，那是一句不可驗證的敘述，v0.9 刪除；不可驗證的承諾比沒有承諾更糟。）
+
+> **為什麼這是 Blocker：v0.8 犯的正是它自己要修的錯。** v0.8 把 F1 從 gzip 改 brotli，理由寫的是「量一個使用者從來不會付的數字，正是自我誤導」——然後把 q11 建置值當成實際下載大小交給 UI。那同樣是使用者不會付的數字，只是因為名字叫 `brotliBytes`、單位也對，**更難發現**。
+
+**`brotliBytes` 只出現在五個具名 top-level entry**：`trialsIndex`、`stats`、`searchShortAll`、`searchLongLatest`、`searchLongAll`。**`recordShards` 的條目沒有這個欄位**——它們不在 §8.5 的 scope 切換器上、也不在 F1 的 Tier 0 內，對 256 個 shard 跑 quality 11 會讓月更新多花數分鐘卻沒有任何讀者。（v0.8 寫成 `files[*]`，那個 wildcard 照字面涵蓋 `recordShards`，與此處刻意的排除矛盾。）
 
 **`trials-index.<h>.json`**：`{ "datasetVersion": "<16 hex>", "trials": [ /* §6.4.4 的 Trial，依 trialId 昇序 */ ] }`
 
@@ -746,10 +780,15 @@ v0.6 曾寫成「E2 的統計卡 oracle 以本清單為唯一來源」，那會�
 | I5 | **排序 total order** | `trials` 依 `trialId` 昇序；`recordIds` 依（可採計日期降序、不可採計者置末、`recordId` 昇序）；`latestCohort` 依 `recordId` 昇序 | `trials` 的順序無前置；**某 Trial 的 `recordIds` 排序只在該 Trial 通過 I3 時評估**（否則取不到排序鍵） |
 | I6 | **stats 一致性** | 每個 facet 的 bucket 計數 == 依 `trials-index` 重算的結果；且 `buckets + unprovided + conflicted` == `denominators.trials`（§9.3.5） | `trials-index` 與 `stats.json` 可讀。**不依賴 I3／I4／I5** |
 | I7 | **`datasetVersion`／`artifactDigest`** | 依 §9.3.2 可重算且與 manifest 所載相符 | `manifest.files` 列出的檔案全部可讀。**不依賴 I3～I6** |
+| I8 | **大小 metadata 可重算**（v0.9 新增） | 每個 `manifest.files` 條目的 `bytes` == 該檔實際位元組長度；`gzipBytes` == 對該位元組的 gzip 長度；五個具名 top-level entry 的 `brotliBytes` == 對該位元組的 brotli **quality 11** 長度；`recordShards` 條目**不得**有 `brotliBytes` | 該檔可讀。**不依賴 I1～I7** |
 
 「無法評估」須逐條記入 report 並註明是哪個前置條件不成立；**不得**與「通過」混為一談。
 
+**I8 為什麼非有不可**（v0.9）：`datasetVersion` 與 `artifactDigest` **都不含 `manifest.json` 自身**（§9.3.2），所以把 `brotliBytes` 改成任意數字**不會**讓 I7、H2、H3 的冪等比較轉紅。而 §8.5 的 UI 與 F2 的基線都讀這個值——**manifest 說多少，兩邊就都相信多少，形成循環自證**。I8 是唯一打斷這個循環的地方，因此它的前置條件刻意只有「該檔可讀」。
+
 **schemaVersion 升級**（非逐次檢查的不變量，是修訂規則）：欄位移除、改名、型別或語意變更須 bump；純新增可選欄位不 bump。判準是「舊版前端讀到新資料會做什麼」。
+
+**本次（v0.8／v0.9）不 bump 的適用理由**（v0.9 補記）：v0.8 從 `displayFields` 移除四個鍵、v0.9 新增 `brotliBytes`，依上述規則前者本應 bump。**但本專案至今沒有建立 GitHub remote、沒有任何部署、不存在任何已發布或可被外部讀取的 schemaVersion 1 artifact**——沒有舊版前端可被誤導，規則所要保護的情境不存在。**v0.9 是首個可發布的 schema，故仍為 1。** 第一次 promotion 成功之後，本段失效，此後任何欄位移除一律照規則 bump。
 
 **孤兒檔不會改變 `artifactDigest`**——§9.3.2 只走 `manifest.files` 列出的路徑。因此序 1 的 inventory 不變量**無可取代**：沒有它，`public/data/` 裡多一個沒人引用的檔案是完全靜默的。
 
@@ -823,7 +862,22 @@ UI 標籤須與此語意一致：顯示「資料建置時間」，**不得**顯�
 
 ### 9.8 collision report 內容契約
 
-`qa/collision-report.json` 須能**唯一定位**每個 collision group：group 的 identity-normalized 值、全部相關 raw protocol、各自的來源 fingerprint 與 trialId。**空 report 或只含 error code 者視為不合規。**
+`qa/collision-report.json` 須能**唯一定位**每個 collision group。**空 report 或只含 error code 者視為不合規。**
+
+**兩層結構（v0.9 修訂）**：
+
+```
+groups[]
+  identityNormalized   該群共用的 identity key 值
+  trialId              該群共用的 trialId（見下方警語）
+  members[]            **≥2 筆**，依 strippedRaw 碼點昇序
+    raw                來源欄位的原始值（未經任何處理）
+    strippedRaw        strip(raw)；群內**兩兩相異**，這正是碰撞的定義
+    fingerprints[]     產生該 raw 的全部來源列 fingerprint，昇序
+```
+
+> **`trialId` 不可用來區分 member。** 碰撞的成員共用同一個 identity key，而 `trialId = "t" + sha256hex(identityKey)[:16]`——**它們的 trialId 必然相同**。v0.8 以前的契約寫「各自的來源 fingerprint 與 trialId」，照字面實作出來的 report 在事故當下無法回答「是哪一筆來源列造成的」，而那是這份 report 存在的唯一理由。
+> `strippedRaw` 必須寫進 report：它是**判定成立的依據本身**。少了它，看 report 的人無法分辨這是真碰撞，還是實作漏了 §6.2 的 strip 而誤報。
 
 ## 10. 風險權重與免責
 
@@ -845,15 +899,20 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 
 ### A. 資料模型與收斂
 
-- **A1** 寫死**每個來源列 fingerprint → trialId 的 group membership**（不只總數）。「不應合併」反例須採用 §6.2 **明確不折疊**的差異——連字號有無（`MK-3475-158` / `MK3475-158`）、空格有無（`9785-CL- 0123` / `9785-CL-0123`）、括號閉合（`ROR-PH-301(APD811-301` / `...301)`）；**不得**使用大小寫或全半形差異（那些會折疊，屬 A7）。另須有「應合併」案例。
+- **A1** 寫死**每個來源列 fingerprint → trialId 的 group membership**（不只總數）。「不應合併」反例須採用 §6.2 **明確不折疊**的差異——連字號有無（`MK-3475-158` / `MK3475-158`）、空格有無（`9785-CL- 0123` / `9785-CL-0123`）、括號閉合（`ROR-PH-301(APD811-301` / `...301)`）；**不得**使用大小寫或全半形差異（那些會折疊，屬 A7）。**「應合併」案例須指名四類**（v0.9，原文只說「另須有應合併案例」，可被「兩筆逐位元相同的列」充數——**那樣 v0.8 最核心的新行為完全沒有被驗收**）：僅**前導**空白、僅**尾隨**空白、**前後皆有**空白、**同一 identity key 有三個以上 raw variant**。四類各自寫死 fingerprint → trialId 的 group membership、`protocolRaw[]` 的精確集合，以及 `WHITESPACE_ONLY_PROTOCOL_VARIANT` 的 warning oracle。另須含 **U+3000／NBSP** 各一（§6.0 的 strip 封閉集合）與 **U+200B 零寬字元**一例——**零寬字元不被 strip，故該例必須判為碰撞**，它是 strip 字元集合邊界的反向哨兵。
 - **A2** fixture 每個案例附明確 oracle。**必含**：≥1 個 10 列以上 protocol、≥1 組 16 欄全同純重複、≥2 筆完全相同的空 protocol 列、**≥1 筆空白-only protocol**、≥3 組同日衝突、≥1 組同日但比較鍵全同、≥1 組同日僅空白／全半形差異（須判**不衝突**且帶 `rawVariants`）、≥1 筆 `TFDA收文號="移案BPA"`、≥1 筆收文號重複、≥1 個 `nearDuplicateGroup`、≥1 筆 `protocolNonIdentifier`、≥1 筆 `suspectedTestRow`（含 `TEST` 值型）。**日期異常各 ≥1**：不可解析、空值、未來日期、`buildDate` 當日（須可採計）、`buildDate+1`（須 `dateFuture`）、`試驗預計執行期間` end<start、期間任一端不可解析。**數值各型 ≥1**：`0`、正整數、前導零、空、嚴格範圍、`min>max` 範圍、負數、文字描述、超界值。
 - **A3** 對 reverse 與 ≥3 個固定 seed 的排列，外加涵蓋「重複列 × 平手 × 空 protocol」交叉組合的 property invariant：先斷言輸出**檔案 inventory 完全相同**，再逐檔 SHA-256 相同，再斷言每個 tie case 的語意結果相同。
 - **A4 反向哨兵** 把同日處置改為「任取 cohort 第一筆為 latest」時，須斷言失敗發生在**指定 tie group 的 `latestAmbiguous` 由 true 變 false**，且 mutation oracle 須涵蓋 `displayFields`、篩選分組與統計輸出。
+  **另須含四個長文字欄位各自為唯一衝突來源的 mutation**（v0.9）：該 Trial 的 9 個卡片欄位全部一致、只有某一個長文字欄位在同日 cohort 內衝突。斷言 `conflictFields` 恰含該欄位、`latestAmbiguous=true`。**只對卡片欄位做衝突判定的實作能通過原本的 A4**——因為它的 fixture 用的是短欄衝突。
 - **A5** 比對來源 canonical fingerprint 的**完整 multiset 含 multiplicity**。oracle 的 row identity 必須**獨立於 §6.3 的 canonical serialization**，並含分隔符／長度前綴的邊界 fixture。
 - **A6** 兩筆完全相同的空 protocol 列須各自取得唯一 ID（`#0`／`#1`）、multiset 完整保留、多排列輸出一致。另須斷言**單筆空 protocol 也帶 `#0`**（§6.3.2）。
-- **A7** 注入兩個不同 raw protocol 但 identity 正規化後相同的列 → `IDENTITY_COLLISION` 硬失敗，且 collision report 須符合 §9.8。**空 report 必須使測試失敗。**
+- **A7** 注入兩列，其 **`strip(raw)` 相異**而 `identityNormalize` 後相同 → `IDENTITY_COLLISION` 硬失敗。**正例須分別覆蓋大小寫折疊與 NFKC 全形折疊各 ≥1**，且每個正例都須滿足 `strip(raw1) != strip(raw2)`（v0.9：原文寫「兩個不同 raw protocol」，**與 v0.8 的新定義相反**，照原文挑一組僅尾隨空白的案例會要求一個 v0.8 明令禁止的結果）。
+  **必含反例**：僅前後空白不同者**不得**觸發 `IDENTITY_COLLISION`（與 A1 的應合併案例同源，但這裡斷言的是「不硬失敗」）。
+  collision report 須符合 §9.8：斷言 **group 與 member 的完整集合與配對關係精確相等**（每個 member 的 `raw`／`strippedRaw`/`fingerprints[]` 逐一比對），不是「欄位存在且非空」。**空 report 必須使測試失敗**；只檢查「report 含某個字串」的斷言同樣不合格——那證明的是檔案裡有那個字串，不是 member 配對正確。
 - **A8（測試替身例外）** 以**注入的雜湊函式**（刻意截短為極少位元）驅動碰撞偵測分支：測試仍須使用**兩個不同的 identity key**（及 recordId 情形下不同的 canonical serialization），斷言回傳 `ID_TRUNCATION_COLLISION`、**停止發布**、且正式 artifact 不變。
 - **A9** `nearDuplicateGroup` 偵測 18 組實測案例；`looseKey` 為空者**不入任何 group**；**單一成員的 group 輸出 `null`**；且偵測用的 loose key **不影響**任何 Trial 的收斂結果（以 A1 的 group membership 再驗一次）。
+  **必含 whitespace-merge × looseKey 的交叉案例**（v0.9）：一個 Trial 先依 §6.2 吸收 ≥2 個前後空白 variant，其 `protocolRaw[]` 中某個 raw 再與**另一個** identity key 共享 looseKey。斷言 Trial **總數**、該 group 的成員（單位是 **identity key** 不是 raw）、該 Trial 在 group 內**只出現一次**，以及 `protocolRaw[]` 的精確集合。
+  **這條堵的弱化實作是**：對每個 raw variant 各建一個 Trial（完全不合併），再讓 looseKey 把它們揭露成近似群——UI 上看起來「有揭露」，實際卻把 §6.2 要求合併的東西降級成了「只揭露不合併」。
 - **A10** 「ASCII 英數字元」的字元集合：注入 `系統測試`（中文，`isalnum()` 為 `True`）→ 必須標記 `protocolNonIdentifier`。以 Unicode alphanumeric 實作者必須失敗。
 
 ### B. ETL 與發布可靠性
@@ -873,7 +932,8 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 - **B6** §9.3.6 的每一條不變量各有**獨立**反例：record 被兩個 Trial 引用、同一 Trial 重複引用、record 放錯 shard、`latestCohort ⊄ recordIds`、**`recordCount` 與 shard 清單長度不符**、**`latestCohortCount` 與 `latestCohort` 長度不符**、三種排序各自未排序、`manifest.files` 與實際檔案集合不符（**孤兒檔**與**列出但不存在**兩種形狀）、facet bucket 計數與 index 不符 → 全部須 `INTEGRITY_DIGEST` 硬失敗。
   三條硬性要求：(a) **缺陷須注入在計算 digest 之前**，使 artifact 的 digest 自洽——改完最終位元組不重算的話，測到的只是 digest 本身，referential integrity 那幾條永遠不會被執行到；每個反例另須斷言 digest 相關的不變量**未**觸發。(b) **斷言違規集合 exactly equals 預期**，不是「包含」——用「包含」的話，一個把所有檢查都回報違規的驗證器會全過。(c) 須有**未變造樣本零違規**的反向哨兵。
   註：「record 被兩個 Trial 引用」的反例必須挑**同一個 shard 內**的兩個 Trial，否則會連帶違反 shard 歸屬而無法隔離。
-  **(d) mutation inventory 與 §9.3.6 的 I1–I7 須雙向對帳**：每條不變量至少一個反例，每個反例對應得到某條不變量；缺任一方向即為未涵蓋。特別容易漏的三類——**零 Trial 引用的 orphan record**（只數已被引用者的 owner count 會漏掉）、**跨檔 `datasetVersion` 與兩種 digest 各自的獨立反例**（省略整類重算仍可通過其餘 mutation）、**三個 facet 各自的 bucket mismatch**（只驗一個 facet 也能通過單一 facet 的 mutation）。
+  **(d) mutation inventory 與 §9.3.6 的 I1–I8 須雙向對帳**：每條不變量至少一個反例，每個反例對應得到某條不變量；缺任一方向即為未涵蓋。特別容易漏的三類——**零 Trial 引用的 orphan record**（只數已被引用者的 owner count 會漏掉）、**跨檔 `datasetVersion` 與兩種 digest 各自的獨立反例**（省略整類重算仍可通過其餘 mutation）、**三個 facet 各自的 bucket mismatch**（只驗一個 facet 也能通過單一 facet 的 mutation）。
+  **I8 的反例須為「檔案內容不變、只竄改 manifest 的大小數值」**（v0.9）：分別竄改 `bytes`、`gzipBytes`、`brotliBytes` 各一，另加「在某個 `recordShards` 條目上**多加**一個 `brotliBytes`」一例。**這四個 mutation 不會改變 `datasetVersion` 或 `artifactDigest`**（兩者都不含 manifest 自身），因此 I7 抓不到——若 I8 的反例沒單獨建立，整類竄改在測試上完全隱形。
   **(e) 「無法評估」也要有反例**：注入一個使某條前置條件不成立的缺陷，斷言下游那條回報「無法評估」而非「通過」——把兩者混為一談的驗證器必須被殺死。
 - **B7** 跨版本綁定：注入「manifest 為新版但某 shard 為舊 `datasetVersion`」→ 前端 fail-closed 顯示「資料版本不一致，請重新載入」，**不得**混用渲染。另斷言除 `manifest.json` 外所有檔名都帶內容雜湊、且 manifest 為唯一固定 URL。
 - **B8 `datasetVersion` 的可計算性與敏感性** 對同一輸入兩次 build 得到相同 `datasetVersion`（**證明無循環定義**）；任一欄位值改變一個字元 → `datasetVersion` 改變；**兩個檔案內容互換** → `datasetVersion` 改變（證明邏輯檔名已納入）；`artifactDigest` 與 `datasetVersion` 為不同值且各自依 §9.3.2 可重算。
@@ -893,7 +953,7 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
   **必含複合狀態**：`1-9007199254740992` vs `2-9007199254740992`（皆為 §6.4.2 第 10 列的超界 range，raw 不同）須判**衝突**；`1-9007199254740992` vs `１-９００７１９９２５４７４０９９２`（NFKC 後等價）須判**不衝突**且帶 `rawVariants`。
   **exhaustiveness 測試以「狀態組合」為單位**，不是單一旗標：斷言 dispatch 涵蓋 §6.4.2 組合表的 15 列，且遇到表外組合時**硬失敗而非 fallback**。
   **以單一旗標做窮盡檢查是不夠的**——一個「合法 range 正確、scalar 超界正確、複合的超界 range 壞掉」的實作會通過那種檢查，而那正是本規格最怕的「測試全綠但功能是壞的」。
-- **C6 `rawVariants` 的層級** 斷言 `rawVariants` 出現在**該欄位的 `flags`**，且 Trial 層級**不存在**等義旗標；代表值為 `recordId` 字典序最小者的 raw；詳情頁列出 cohort 中**每一筆** record 的原始值（不得只列去重文字）。
+- **C6 `rawVariants` 的層級** 斷言 `rawVariants` 出現在**該 9 個卡片欄位之一的 `flags`**，且 Trial 層級**不存在**等義旗標；**另斷言四個長文字欄位的 `rawVariants` 不出現在任何輸出**——不在 `trials-index`、不在 shard 的 `fieldFlags`、不在任何新增鍵下（v0.9：§6.4.3 已定案長文字不輸出 `rawVariants`，這條反向斷言堵的是「實作私自擴充 schema 替它找個位置」）；代表值為 `recordId` 字典序最小者的 raw；詳情頁列出 cohort 中**每一筆** record 的原始值（不得只列去重文字）。
 
 ### D. 搜尋與篩選
 
@@ -903,7 +963,10 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 - **D4** 每個正式 filter 維度至少一組，另加同維度多選（OR）、跨維度組合（AND）、每個 bucket 的閉區間端點、`period` 的重疊語意邊界、重複 query param、未知 param、無效值。斷言結果 trialId 清單逐一相同且順序相同、**canonical URL 字串精確相等**、reload 後控制項狀態精確相等。
 - **D5** 以**封閉的 filter schema 與 DOM selector invariant** 為主 oracle：斷言 filter schema、DOM 控制項、URL parser、輸出 state 四處均不存在 trial-status 維度。列舉中文同義詞只作 mutation guard。
 - **D6** **每一個可篩選且可能衝突的欄位**各有一組 `latestAmbiguous` oracle，斷言該 trial 歸入「不一致」分組且**不出現**在任一具體值的篩選結果中。
-- **D7** scope 切換：四種組合各自的結果集、URL 的 `fields`／`history` 可重現、切換前顯示的大小取自 `manifest.files[*].brotliBytes`（**非前端寫死**）、scope 指示持續可見、零結果時提示可擴大的 scope、索引載入失敗時退回上一個 scope 並顯示說明。
+  **另須含「不可篩選但仍影響 `latestAmbiguous` 的長文字欄位」各一組**（v0.9）：四個長文字欄位**不是**篩選維度，但它們**照樣進 `conflictFields` 並使 `latestAmbiguous=true``**。只驗可篩選欄位的實作會把「只有長文字衝突」的 Trial 標成不 ambiguous，而那是**漏報**——直接違反誤導優先的風險排序。
+- **D7** scope 切換：四種組合各自的結果集、URL 的 `fields`／`history` 可重現、scope 指示持續可見、零結果時提示可擴大的 scope、索引載入失敗時退回上一個 scope 並顯示說明。
+  **顯示大小的驗收以「檔案集合」為單位，不是「來源是 manifest」**（v0.9）：對**每一個** `起始 scope → 目標 scope` 的轉換（含由非預設 scope 出發者），寫死 (a) 必須下載的檔案集合（依 §8.5 的集合差）、(b) 已在快取中的前提、(c) expected 總 bytes ＝ 該集合各檔 `brotliBytes` 之和、(d) UI 實際顯示的「約 X KiB」級距。
+  **原文只驗「取自 manifest」，而那是一個顯示任何單一檔案數字都能通過的斷言**：由預設 scope 進入 `all`+`all` 時 UI 若只顯示 `searchLongAll.brotliBytes`，少報了 `search-short-all` 與 `search-long-latest` 共 2,173.7 KiB，照樣「取自 manifest」。**低報與高報都違反改用實際編碼的初衷。**
 - **D8 `enroll` 的區間重疊** 一筆 `台灣預計受試者人數 = "20-40"` 須**同時**出現在 `11-30` 與 `31-100` 兩個 bucket 的篩選結果中，且卡片顯示 raw `20-40`（不得顯示為單一數字）。另斷言 `numericUnparsed`／`numericImplausible` 等歸「未提供」而**不進任何數值 bucket**。
 
 ### E. 呈現與誤導防範
@@ -916,18 +979,30 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 - **E3** 斷言各 label 對應**精確 fixture 值**（來源 `資料更新時間` 對應 record、`builtAt` 對應 manifest），覆蓋首頁、結果頁、詳情頁與 record 切換後。
 - **E4** 建立**來源資料可到達的輸出 surface 封閉 inventory**（卡片、詳情、record 切換、filter option、搜尋命中標籤、統計 label、accessible name、URL 顯示），逐一測 XSS fixture。
 - **E5** 逐頁斷言 §10 三項核心性質的**可見文字**，可見性綁定 G1／G2 的 viewport、最小字級與對比 oracle。
-- **E6** inclusion 與 exclusion **各**有長 fixture（含 22,490 字元案例）：展開後換行正規化後**全文精確相等**、首尾 canary 存在、切換 record 後亦相符。
+- **E6** **四個被移出 index 的長文字欄位各自**都要斷言詳情頁呈現完整：`納入條件`／`排除條件`／`試驗目的`／`主要評估指標`，展開後換行正規化後**全文精確相等**、首尾 canary 存在、切換 record 後亦相符。長度壓力案例（22,490 字元）仍集中在 inclusion／exclusion 兩欄。
+  **v0.9 補上後兩欄的理由**：修訂 2 把 `試驗目的`／`主要評估指標` 移出 `trials-index` 後，**詳情頁成為它們唯一的使用者入口**。原文只驗 inclusion／exclusion，詳情頁完全不渲染另外兩欄時 E6 與 F3 **都會全綠**——F3 驗的是「不該出現的地方沒出現」，恰好與「該出現的地方沒出現」同向。
 - **E7** `latestAmbiguous=true` 的卡片須顯示「同日多筆資料不一致」；對**全部衝突候選值**做等價檢查——斷言候選值不出現在卡片的可見文字、accessible name、attribute 或 data-state 中（含**截斷與正規化後**的形式）。另斷言衝突欄位在 `displayFields` 中**完全省略**而非 `{typed:null}`。
+  **長文字欄位須另立案例**（v0.9）：對「只有某個長文字欄位衝突」的 Trial，斷言 `conflictFields` 的**精確集合**、`latestAmbiguous=true`、卡片顯示泛化警示、詳情頁並列**全部**候選紀錄。
+  **對長文字沿用原本的斷言是恆真的**：那四欄本來就不在 `displayFields`，「候選值不出現在卡片」無論衝突有沒有被偵測到都會成立——**一條永遠不會紅的斷言，證明不了任何事**。
 - **E8** `dateUnknown=true` 顯示「資料日期無法辨識，請查官方來源」；`protocolNonIdentifier=true` 顯示「來源未提供計畫書編號」且 `?protocol=` 不接受該值；`nearDuplicateGroup` 非空時詳情頁顯示近似編號提示與連結；`numericRange` 顯示 raw 原文。
 
 ### F. 效能（分層預算）
 
-- **F1** **Tier 0（預設 scope 的冷啟動）≤1.5 MB，以實際傳輸編碼量測**。定義為「冷啟動到**可搜尋 readiness**」的全部 network responses；readiness 以**功能性 probe** 判定（執行一個固定查詢並取得正確結果集才算就緒）。以 production build 量測，列出納入檔案清單與總和寫入 CI artifact。
-  **量測編碼定案為 brotli（v0.8 修訂）**：部署在 Cloudflare Pages，對 `application/json` 實際送的是 brotli。v0.7 全程以 gzip 計，而同一份位元組兩者差約 43%（index 1,611 → 915 KiB）——**量一個使用者從來不會付的數字，正是 F1 自己警告的那種自我誤導**。CI 量測須取 response 的 `content-encoding` 與實收位元組，不得自行 gzip 再報。
+- **F1** **Tier 0（預設 scope 的冷啟動）≤ 1,500,000 bytes，以實際傳輸編碼量測**。**門檻以整數 bytes 封存（v0.9）**：v0.8 寫「1.5 MB」而表格用 KiB、餘裕又以 1,536 KiB 反推，等於同時存在 1,500,000 與 1,572,864 兩個門檻，落在中間的 bundle 可依任一口徑宣告通過。依「不調鬆數字」紀律採**較嚴的十進位**。定義為「冷啟動到**可搜尋 readiness**」的全部 network responses；readiness 以**功能性 probe** 判定（執行一個固定查詢並取得正確結果集才算就緒）。以 production build 量測，列出納入檔案清單與總和寫入 CI artifact。
+  **量測對象定案為「部署端實際 response 的實收位元組」（v0.8 引入，v0.9 封存邊界）**：部署在 Cloudflare Pages，對 `application/json` 實際送的是 brotli。v0.7 全程以 gzip 計，而同一份位元組兩者差約 43%——**量一個使用者從來不會付的數字，正是 F1 自己警告的那種自我誤導**。
+  **封存的量測邊界**，四條缺一不可（每一條都對應一種能通過文字但量錯東西的實作）：
+
+  1. **計入的是壓縮後的 response body bytes**，逐 response 依其**實際** `content-encoding` 計算。**不得**使用 `Content-Length` header 值、**不得**使用解壓後長度、**不得**使用 Resource Timing 的 `transferSize`（它含 header 與連線開銷，跨瀏覽器不可比）。**不含 header bytes。**
+  2. **混合 encoding 是正常的，不是失敗**：HTML／JS／CSS／字型／小型 response 未必是 `br`（Cloudflare 對極小檔可能不壓）。逐 response 依**實際**編碼計入即可，**不得**因為某個 response 不是 `br` 就排除它或改用估算值。
+  3. **readiness 前已發起的 request 一律計入**，即使它在 readiness 判定之後才完成。只計「已完成」會讓實作用一個提早觸發的 readiness 把大檔排除在量測外。
+  4. **`manifest.files[*].brotliBytes` 不得作為 F1 的量測來源**——那是建置期 quality 11 估算值（§9.3.5），與實際傳輸沒有必然相等關係（Cloudflare 動態壓縮約 q4–q5，**比 q11 大**）。以估算值申報 F1 通過，與 v0.7 用 gzip 申報是同一個錯。
+
+  CI artifact 須**逐 response** 列出 URL、`content-encoding`、body bytes 與納入／排除理由。
   **口徑定案：1.5 MB 量的是「全部 network responses」，含 HTML、JS、CSS、字型與資料檔。** 這是使用者真正付的冷啟動成本；只量資料層會讓 CI 在真實冷啟動超標時仍顯示合格。
   **資料層子集合（封閉，須恰好等於這三個）**：`manifest.json` ＋ `trials-index.<h>.json` ＋ `stats.<h>.json`。三者都在冷啟動路徑上——首頁要顯示統計卡（E2）、篩選控制項的值域來自 `stats.json` 的 facet buckets（§9.3.5）。子集合另立斷言，**不取代**總和斷言。
   **readiness probe 不得早於這三個檔載入完成就判定就緒**——否則把必要的 response 排除在量測之外，等於自己放水。
-  **Tier 0 實測（2026-09-21，18,736 列／5,888 Trial 的真實快照，§6.4.5 的 9 欄 `displayFields`）**：
+  **Tier 0 建置期估算（2026-09-21，§6.4.5 的 9 欄 `displayFields`）**
+  **快照綁定**：`sourceSha256`（ZIP）`ff182257442fa53078b308afa0a5a0cae3b162f9d5a36f0740f787e87e303f3c`／CSV `46cd2b9e1e33743d630c69547c88c7ecc0825e5d7259a4192575e010303e47cf`／18,736 列／5,888 Trial。**沒有綁定快照的效能數字無法判斷它對應哪個輸入**，上游同日重新打包就失去意義。
 
   | 檔案 | raw | gzip | brotli |
   |---|---:|---:|---:|
@@ -936,23 +1011,34 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
   | `manifest.json` | 28.7 KiB | 7.0 KiB | 5.4 KiB |
   | **Tier 0 合計** | | **1,622.6 KiB** | **924.0 KiB** |
 
-  以 brotli 計餘 **612.0 KiB** 給 HTML／JS／CSS／字型；以 gzip 計則已超標 86.6 KiB。**這是量測編碼定案為 brotli 的直接後果，不是把門檻調鬆。**
+  **這三個數字是 quality 11 的建置期估算值，不是 F1 的驗收結果**（v0.9）。brotli 欄合計 946,176 bytes，對 1,500,000 bytes 的門檻餘 **553,824 bytes（540.8 KiB）** 給 HTML／JS／CSS／字型——但 Cloudflare 動態壓縮約 q4–q5，**實際傳輸會大於此值**，真正的餘裕只會更少。
+  **F1 的通過與否要等 M2 對真實部署量過才算數**，本表只用來判斷「方向對不對、還有沒有數量級的問題」。以 gzip 計則為 1,661,478 bytes，已超標——**改用實際傳輸編碼是量對東西，不是把門檻調鬆。**
   `manifest.json` 有 256 個 shard 條目故達 28.7 KiB；它是唯一不帶內容雜湊、`Cache-Control: no-cache` 的檔，每次冷啟動都重取，因此必須計入 Tier 0。
-  **`stats.json` 的大小疑慮解除**：三個 facet 的實測 bucket 數為 `applicant` **371**、`phase` 7、`scale` 3；`unprovided` 為 109／109／187，`conflicted` 為 8／3／0，三者各自的 `buckets + unprovided + conflicted` 均**恰等於** `denominators.trials = 5888`（§9.3.6 I6 成立）。`applicant` 的 cardinality 是三者中唯一過百的，但 371 個字串 bucket 壓縮後整份 `stats.json` 僅 **4.6 KiB brotli**——v0.7「其大小主要由 applicant cardinality 決定」的擔憂在這個量級下不成立。
+  **`stats.json` 的大小疑慮解除**：三個 facet 的實測 bucket 數為 `applicant` **371**、`phase` 7、`scale` 3；`unprovided` 為 109／109／187，`conflicted` 為 8／3／0，三者各自的 `buckets + unprovided + conflicted` 均**恰等於** `denominators.trials = 5888`（§9.3.6 I6 成立）。`applicant` 的 cardinality 是三者中唯一過百的，但 371 個字串 bucket 壓縮後整份 `stats.json` 僅 **3.9 KiB brotli**——v0.7「其大小主要由 applicant cardinality 決定」的擔憂在這個量級下不成立。
+  **這些數字只解除 payload 大小疑慮，不構成分類正確性的證據**（v0.9 補記）：三類總和閉合於 5,888 是**算術性質**，把 Trial 分到錯誤 bucket 仍然可以閉合。分類正確性的 oracle 是 I6 的逐 bucket 重算與 E2 的完整 multiset 對帳。**371／7／3 也不是門檻**——上游合法新增一個申請者就會變動，把它寫成 gate 只會製造無意義的紅燈。
   **超標時先報瓶頸歸因，不調鬆數字**（§10 把效能排在誤導與資料正確性之後——超標是要解的工程問題，不是安全問題；而「量了一個不是使用者成本的數字然後宣告合格」才是會誤導自己的那種錯）。
-  **驗收須同時斷言兩件事**：(i) readiness 前的**全部 response** 的 gzip 總和 ≤ 1.5 MB，清單寫入 CI artifact；(ii) 其中的資料檔集合**恰好等於**上述三個。只做 (ii) 的量測器會漏掉 JS／CSS／字型。
+  **驗收須同時斷言兩件事**：(i) readiness 前的**全部 response** 以**實收位元組**（brotli；取自各 response 的 `content-encoding` 與實際長度）計的總和 ≤ 1.5 MB，清單寫入 CI artifact；(ii) 其中的資料檔集合**恰好等於**上述三個。只做 (ii) 的量測器會漏掉 JS／CSS／字型。
   > 門檻自 v0.4 的 1.0 MB 上調為 1.5 MB：原基線「715–900 KiB」是估算值，實測有誤。`recordIds` 移入 shard 後省 299 KiB；**拆成獨立檔反而更大**（903+693=1,596 > 1,236），故 `searchShortLatest` 不拆。
   > **v0.7 的 1,236 KiB 基線本身也是估算值。** 2026-09-21 實測重建了這條線：9 欄 `displayFields` ＋ `searchShortLatest` 的 index 為 1,611 KiB gzip（v0.7 估 1,236）。估算偏低 23%，但不影響結論——瓶頸從來不是這 30% 的誤差，而是 v0.7 的 §6.4.5 把 4 個長文字欄位也放進 index（15,621 KiB，12.6 倍）。
-- **F2** 各按需 tier 的實測上限記錄於規格與 CI artifact，**不計入 F1**，超出記錄值 20% 須在 CI 告警。2026-09-21 實測（brotli，取自 `manifest.files[*].brotliBytes`）：
+- **F2** **各按需檔案**的壓縮基線記錄於規格與 CI artifact，**不計入 F1**，超出記錄值 20% 須在 CI 告警。**以檔案為單位，不以 scope 為單位**（v0.9）——scope 的成本由 §8.5 的集合差導出，在這裡再記一次 scope 數字必然產生「總量還是增量」的歧義。
 
-  | scope | 檔案 | brotli | v0.5 的 gzip 估值 |
-  |---|---|---:|---:|
-  | `short`+`all` | `search-short-all` | 696.1 KiB | 1,649 KiB |
-  | `all`+`latest` | `search-long-latest` | 1,477.6 KiB | 2,044 KiB |
-  | `all`+`all` | ＋`search-long-all` | 1,840.7 KiB | 5,389 KiB |
+  | 檔案 | brotli（q11 估算） | v0.5 的 gzip 估值 |
+  |---|---:|---:|
+  | `search-short-all` | 696.1 KiB | 1,649 KiB |
+  | `search-long-latest` | 1,477.6 KiB | 2,044 KiB |
+  | `search-long-all` | 1,840.7 KiB | 5,389 KiB |
 
-  三者全部低於 v0.5 的估值，`all`+`all` 更低了 66%——**估算一路偏保守，但偏的方向不一致**（F1 的 index 估值偏低 23%），所以估值一律不可當驗收基準。
-- **F3** 長文字隔離：在 `納入條件`／`排除條件`／`試驗目的`／`主要評估指標` 放**多筆分散的唯一 canary**（≥5 筆，跨不同 shard），斷言 Tier 0 的全部 response 與 bundle 均不含其**內容**，且**初始 payload 的 schema 不含這些欄位鍵**。
+  快照綁定同 F1。三者全部低於 v0.5 的估值，最多低 66%——**估算一路偏保守，但偏的方向不一致**（F1 的 index 估值偏低 23%），所以估值一律不可當驗收基準。
+
+  **CI 的 oracle 必須是對 artifact 位元組的獨立重算，不得讀 `manifest.files[*].brotliBytes`**（v0.9）：v0.8 寫「取自 manifest」，而 manifest 的數值本身沒有任何東西驗證（§9.3.6 I8 是 v0.9 才補的）。**同時填錯 manifest 與 CI artifact 的實作會讓 20% 告警完全失去偵測能力**——manifest 在此是被驗證對象，不得兼任 expected value。
+- **F3** 長文字隔離：在 `納入條件`／`排除條件`／`試驗目的`／`主要評估指標` 放**多筆分散的唯一 canary**（≥5 筆，跨不同 shard）。
+  **檢查對象是解壓、解碼、解析後的 logical payload**（v0.9），不是 response 的原始位元組：
+
+  1. 斷言四欄的 canary **不出現在 Tier 0 任何 response 解析後的任何可達 JSON value 中**（遞迴走訪全部字串葉節點，不是只看已知鍵）。
+  2. 斷言每個 Trial 的 `displayFields` 鍵集合**恰等於** 9 個卡片欄位 − `conflictFields` 中屬於這 9 欄者（§6.4.5）。這同時堵死「換個鍵名塞同樣的文字」。
+  3. 斷言 bundle（JS／CSS）不含 canary。
+
+  **在壓縮後的 response bytes 裡搜明文 canary 是一條永遠找不到東西的斷言**——brotli 壓過的內容當然不含明文，那種量測器在長文字整個洩進初始 payload 時仍會全綠。**別名鍵、Base64 或其他編碼、塞進另一個物件，三條也都要能擋。**
 - **F4** 以 production-scale fixture（5,888 Trial／18,736 SourceRecord）與固定查詢 corpus（零結果、極多結果、中文、英文、多詞、protocol）量測；計時自**輸入事件到結果 DOM 完成**；基準環境為 **GitHub Actions runner 類別 + 固定 CPU throttle 倍率**，固定樣本數，門檻 **p95 ≤300 ms**。規格明寫「跨時間比較僅在同 runner 類別內有效」。達不到須寫**瓶頸歸因**，不調鬆數字。
 
 ### G. 無障礙
@@ -1011,11 +1097,25 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 
 ## 15. 修訂紀錄
 
+- **v0.9（2026-09-21）** 第五輪 `/codex-checkplan` **只審 v0.8 的修訂本身**（接受 35／部分接受 4／拒絕 0，範圍蔓延 0）。**39 項發現沒有一項是幻覺，也沒有一項是 v0.7 遺留——全部是 v0.8 修訂自己造的**，第五次應驗「修訂會製造新洞」。另有 4 處（`plan-verdict-r5.md` 的 S1–S4）是送審前自查修掉的，形狀一致：**最容易漏的是「同一個數字寫在兩個地方」**。主要變更：
+  - **Blocker：`brotliBytes` 降為建置期 q11 估算值，F1 的唯一 oracle 改為部署端實際 response 的實收位元組。** v0.8 犯的正是它自己要修的錯——它把 F1 從 gzip 改成 brotli，理由寫「量一個使用者從來不會付的數字就是自我誤導」，然後把 q11 建置值交給 UI 當實際下載大小。Cloudflare 動態壓縮約 q4–q5，**比 q11 大**。連帶把 Tier 0 的 924.0 KiB 降級為估算值，F1 的通過與否要等 M2 對真實部署量過才算數
+  - **§6.3.4 的碰撞條件改為引用 §6.2。** v0.8 改了 §6.2 卻沒同步這張表，留下同一契約的兩份不等價定義，而那張表是 ETL 最可能照著寫的那份
+  - **§6.0 封存 `strip` 的字元集合**（`White_Space=Yes`，含 NBSP／U+3000；**零寬字元刻意排除**，只差零寬字元者是碰撞不是合併）。v0.8 把 `strip` 升格為「合併或硬失敗」的邊界，它在那之前只是正規化的一步，定義模糊無害
+  - **長文字欄位不輸出 `rawVariants`。** v0.8 一邊把四個長文字移出 `displayFields`，一邊聲稱「`rawVariants` 仍對全部 13 欄計算」——而 §6.4.5 明定 `rawVariants` 只放在 `displayFields[field].flags`、不另設 Trial 層級表示，**那四欄的結果無處可去**。它們沒有任何 UI 消費者，故不輸出；C6 加反向斷言堵「私自擴充 schema」
+  - **新增不變量 I8（大小 metadata 可重算）。** 兩個 digest 都不含 manifest 自身，故竄改 `brotliBytes` 不會讓 I7／H2／H3 轉紅，而 §8.5 的 UI 與 F2 都讀它——**manifest 說多少兩邊就信多少，循環自證**
+  - **§8.5 改為「scope → 所需檔案集合」模型**，切換成本由集合差導出。v0.8 以 scope 記單一數字，`all`+`all` 那格三義，差距達 696 KiB；D7 連帶改為對每個 scope transition 寫死檔案集合與 expected 總和
+  - **F1 門檻以整數 bytes 封存為 1,500,000**（v0.8 的「1.5 MB」與表格的 1,536 KiB 反推並存，中間地帶可依任一口徑宣告通過；依「不調鬆數字」採較嚴的十進位），並封存四條量測邊界（壓縮後 body bytes／混合編碼正常／in-flight 計入／不得用 manifest 估算值申報）
+  - **F2 的 CI oracle 改為對 artifact 獨立重算**，manifest 降為被驗證對象——v0.8 寫「取自 manifest」而 manifest 無人驗證，20% 告警形同虛設
+  - **F3 的檢查對象改為解析後的 logical payload。** 原文可被「在壓縮後的 bytes 裡搜明文 canary」滿足，**那是一條永遠不會紅的斷言**
+  - **A1／A7／A9／A4／C6／D6／E6／E7 補指名反例類別。** 最嚴重的是 A7 原文與 v0.8 的新定義**相反**，以及 A1 的「應合併案例」可用兩筆逐位元相同的列充數——**v0.8 最核心的新行為原本完全沒有被驗收**
+  - **schemaVersion 維持 1 並寫明適用理由**：尚未建 remote、尚未部署、不存在任何可被外部讀取的 v1 artifact，規則要保護的情境不存在；第一次 promotion 成功後本段失效
+  - **教訓**：v0.8 的教訓是「prose 覆審抓不到規格與現實的落差」，v0.9 是它的反面——**本輪 39 項全部是規格內部一致性問題，那正是 prose 覆審擅長而實跑永遠不會顯形的類別。** 兩種手段互補，不可互相取代。
+
 - **v0.8（2026-09-21）** **首次連網實跑觸發**，不是覆審觸發。前七版全部靠凍結 fixture 與 prose 覆審推進，M1 的 141 個測試全綠，而真實資料一跑就在第一道硬失敗停住。兩項修訂都是「規格內部本來就矛盾，只是沒有東西去碰它」：
   - **§6.2 的碰撞定義限縮為「`strip(raw)` 不同而正規化後相同」**。v0.7 字面上把 `identityNormalize` 自己的 `strip()` 也算成碰撞，等於要求正規化不准折疊任何東西。實資料 4 組僅尾隨一個空白的 protocol 使管線 exit 22，**一次都跑不完**。v0.7 宣稱的「實測 0 碰撞」是量錯了——5,882 數的是 distinct **normalized** 值，從未與 5,887 個 distinct **raw** 對照，那個量法在定義上就看不見碰撞。§9.3.5 自己寫的 `trialCount: 5888` 是合併後的數字，規格的兩個實測數字本來就互相矛盾
   - **§6.4.4／§6.4.5 的 `displayFields` 改為 9 個卡片欄位**，與早已存在的 **F3**（「初始 payload 的 schema 不含四個長文字欄位鍵」）一致。v0.7 的 §6.4.5 說涵蓋全部 13 欄——照 §6.4.5 寫就必然違反 F3，照 F3 寫就違反 §6.4.5，**兩條規範直接衝突而四輪覆審都沒抓到**。實測代價：照字面實作的 index 是 15,621 KiB gzip（F1 門檻的 10.2 倍），長文字佔 raw 位元組 92.6%
-  - **F1 的量測編碼定案為 brotli**，並補上 Tier 0 的實測表（923.7 KiB brotli，餘 612 KiB 給 bundle）。v0.7 全程以 gzip 計，但部署在 Cloudflare Pages 實際送 brotli——**量一個使用者從來不會付的數字，正是 F1 自己那段話警告的自我誤導**。同時把 §8.5／D7 的 UI 下載大小來源由 `gzipBytes` 改為 `brotliBytes`
-  - **`stats.json` 的 cardinality 疑慮解除**：`applicant` 實測 371 bucket、`phase` 7、`scale` 3，三者的 `buckets + unprovided + conflicted` 均恰等於 5,888，整份 4.6 KiB brotli
+  - **F1 的量測編碼定案為 brotli**，並補上 Tier 0 的實測表（**924.0 KiB brotli**，餘 612.0 KiB 給 bundle）。v0.7 全程以 gzip 計，但部署在 Cloudflare Pages 實際送 brotli——**量一個使用者從來不會付的數字，正是 F1 自己那段話警告的自我誤導**。同時把 §8.5／D7 的 UI 下載大小來源由 `gzipBytes` 改為 `brotliBytes`
+  - **`stats.json` 的 cardinality 疑慮解除**：`applicant` 實測 371 bucket、`phase` 7、`scale` 3，三者的 `buckets + unprovided + conflicted` 均恰等於 5,888，整份 3.9 KiB brotli
   - **教訓**：凍結 fixture 證明的是「實作符合規格」，證明不了「規格符合現實」。v0.5 起反覆用 fixture 反驗規格找出 12 個 GAP，但 fixture 是照規格寫的，規格與真實資料的落差它結構上看不見。**新專案的第一次連網實跑要排在規格定案之後、實作完成之前**，不是排在最後當驗收。
 
 - **v0.7（2026-09-18）** 依 `plan-verdict-r4.md`（接受 9／部分接受 2／拒絕 0／Blocker 0）改寫。**本輪 11 項發現全部是 v0.6 修訂自己造的，沒有一項是 v0.5 遺留**——第四次應驗「修訂會製造新洞」。形狀一致：**為了關掉一個洞而引入的新概念，本身沒有被定義清楚。** 主要變更：
