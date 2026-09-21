@@ -306,3 +306,71 @@ def test_c6_no_raw_variants_without_difference(trials):
     t = next(t for t in trials if "NR-028" in t.protocol_raw)
     assert len(t.records) == 1
     assert not any("rawVariants" in v.flags for v in t.display_fields.values())
+
+
+# ---------------------------------------------------------------- C6（v0.9 補）
+
+def test_c6_long_text_raw_variants_absent_from_every_output(a_core_rows, build_date):
+    """C6（v0.9）：四個長文字欄位的 `rawVariants` **不出現在任何輸出**。
+
+    §6.4.3 定案長文字仍**計算**比較鍵與衝突，但**不輸出 `rawVariants`**——
+    它們不在 `displayFields` 內，而 §6.4.5 明定該旗標只放那裡、不另設 Trial 層級表示。
+
+    這條堵的是「實作私自擴充 schema 替它找個位置」：丟棄、複製到 record、
+    自創一個新鍵，三種都可能通過其餘的 C6 斷言。
+    """
+    from trial_radar.fields import LONG_TEXT_FIELDS
+
+    trials = build_trials(list(a_core_rows.values()), build_date)
+
+    # 前提：fixture 確實有長文字欄位帶 rawVariants，否則這條測不到東西
+    carriers = [
+        t for t in trials
+        if any("rawVariants" in t.display_fields[f].flags
+               for f in LONG_TEXT_FIELDS if f in t.display_fields)
+    ]
+    assert carriers, "fixture 須有長文字欄位的 rawVariants，否則這條是空轉的"
+
+    out = build_artifacts(trials, **BUILD_KW)
+
+    # (1) trials-index 的 displayFields 完全不含這四欄，遑論其旗標
+    for entry in out.logical["trials-index.json"]["trials"]:
+        assert not set(entry["displayFields"]) & set(LONG_TEXT_FIELDS)
+
+    # (2) shard 的 record-level fieldFlags 不得被塞進 rawVariants。
+    #     rawVariants 是 cohort 層級的結論，複製到每一筆 record 會讓它看起來
+    #     像是該筆紀錄自己的性質——那是另一個意思。
+    for name, payload in out.logical.items():
+        if not name.startswith("records/"):
+            continue
+        for rec in payload["records"].values():
+            for field, flags in rec.get("fieldFlags", {}).items():
+                assert "rawVariants" not in flags, f"{name} {field}"
+
+    # (3) 全域字串掃描：任何新鍵下夾帶都會被抓到
+    import json
+
+    for name, payload in out.logical.items():
+        blob = json.dumps(payload, ensure_ascii=False)
+        if "rawVariants" not in blob:
+            continue
+        # 只有 9 個卡片欄位的 flags 可以帶它
+        for entry in payload.get("trials", []):
+            for field, value in entry["displayFields"].items():
+                if "rawVariants" in value["flags"]:
+                    assert field not in LONG_TEXT_FIELDS
+
+
+def test_c6_short_field_raw_variants_still_present(a_core_rows, build_date):
+    """**反向哨兵**：卡片欄位的 `rawVariants` 必須照樣輸出。
+
+    沒有這條，一個「把 rawVariants 整個拿掉」的實作會讓上一條轉綠。
+    """
+    out = build_artifacts(build_trials(list(a_core_rows.values()), build_date), **BUILD_KW)
+    found = [
+        (t["id"], f)
+        for t in out.logical["trials-index.json"]["trials"]
+        for f, v in t["displayFields"].items()
+        if "rawVariants" in v["flags"]
+    ]
+    assert found, "卡片欄位的 rawVariants 不得一併消失"

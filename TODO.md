@@ -6,7 +6,7 @@
 
 本輪反驗出 **GAP-8（High）／GAP-9／GAP-10／GAP-11（Medium）／GAP-12（Low）**，全部 open，見 `.ai-review/fixture-findings-m05.md`。
 
-M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三支 CLI（`fetch_tfda.py`／`validate_schema.py`／`build_data.py`）。**pytest 171 綠**，fixture 自檢 `run_all.py` 289 條斷言全綠。
+M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三支 CLI（`fetch_tfda.py`／`validate_schema.py`／`build_data.py`）。**pytest 199 綠**，fixture 自檢 `run_all.py` 289 條斷言全綠。
 
 **2026-09-21 首次連網實跑撞出兩個規格洞，已改為 v0.8**（見 `plan.md` §15）：§6.2 的碰撞規則照字面使管線 exit 22 一次都跑不完；§6.4.5 與 F3 直接衝突，照 §6.4.5 實作的 index 是 F1 門檻的 10.2 倍。**四輪 prose 覆審與 12 個 fixture GAP 都沒抓到這兩個**——fixture 是照規格寫的，規格與現實的落差它結構上看不見。
 
@@ -101,15 +101,15 @@ M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三�
 
 A 群 fixture **已建立並補齊 v0.5 案例**（`tests/fixtures/a_core/` 73 列、`a7_identity_collision/` 5 列），以下是待寫的**測試**本身：
 
-- [ ] A1 fingerprint → trialId 的 group membership。「不應合併」反例用 §6.2 **不折疊**的差異（連字號／空格／括號閉合），**不可**用大小寫或全半形（那些會折疊，屬 A7）
+- [x] A1 fingerprint → trialId 的 group membership；「不應合併」反例用不折疊的差異；**「應合併」四類**（僅前導／僅尾隨／前後皆有／三個以上 variant，含 U+3000 與 NBSP）
 - [ ] A2 每個案例附 oracle；必含 ≥2 筆完全相同空 protocol、≥3 組同日衝突、≥1 組同日正規化後全同、**≥1 組同日僅空白／全半形差異（須判為不衝突）**、≥1 個 `nearDuplicateGroup`、≥1 筆 `protocolNonIdentifier`、**四類日期異常各 ≥1**（不可解析／空值／未來日期／end<start）
 - [ ] A3 reverse + ≥3 seed + 「重複列 × 平手 × 空 protocol」交叉 property invariant → 檔案 inventory 相同 + 逐檔 hash 相同 + tie case 語意相同
-- [ ] A4 反向哨兵：改「任取 cohort 第一筆」時須失敗於**指定 tie group 的 `latestAmbiguous` 翻轉**；oracle 須涵蓋 `displayFields`、篩選分組與統計輸出（只留旗標但把第一筆值塞進 displayFields 的實作要被殺死）
+- [x] A4 反向哨兵（含**四個長文字欄位各自為唯一衝突來源**的 mutation）：改「任取 cohort 第一筆」時須失敗於**指定 tie group 的 `latestAmbiguous` 翻轉**；oracle 須涵蓋 `displayFields`、篩選分組與統計輸出（只留旗標但把第一筆值塞進 displayFields 的實作要被殺死）
 - [ ] A5 canonical fingerprint 完整 multiset 含 multiplicity；oracle 的 row identity **獨立於 §6.3 的 serialization**（否則自我驗證）；含分隔符／長度前綴邊界 fixture
 - [ ] A6 兩筆相同空 protocol 各取得唯一 ID
-- [ ] A7 identity 碰撞 → `IDENTITY_COLLISION` 硬失敗，且 collision report 須唯一定位 group／raw 值／正規化值／fingerprint（**空 report 要使測試失敗**）
+- [x] A7 碰撞硬失敗；正例涵蓋大小寫與 NFKC 折疊；**空白變體反例**（不得碰撞）與 **U+200B 零寬字元哨兵**（必須碰撞）；collision report 的 group／member 配對精確相等
 - [ ] A8 trialId／recordId 截短碰撞 → `ID_TRUNCATION_COLLISION`。**改以注入的雜湊替身驅動**（真實 64 位元碰撞不可建構，見 GAP-6），規格待第三輪修訂後定案
-- [ ] A9 `nearDuplicateGroup` 偵測 18 組實測案例；`protocolNonIdentifier` 不入 group；loose key **不影響任何收斂結果**
+- [x] A9 `nearDuplicateGroup` 18 組；loose key 不影響收斂；**whitespace merge × looseKey 交叉案例**
 - [ ] B1 §9.5 每個 error code 各一測試；斷言已發布狀態未變（檔名集合、每檔 hash、`manifest.files` 指向、整體 digest）且**無新增正式檔**；content-type 測 `application/zip;charset=utf-8` 通過、`text/html` 失敗
 - [ ] B2 structured error code + layer，不以 stderr 字串判定；**多重異常 fixture 驗 precedence**（transport→archive→decode→schema→content→publish）
 - [ ] B3 schema 通過後才因零列失敗
@@ -120,7 +120,7 @@ A 群 fixture **已建立並補齊 v0.5 案例**（`tests/fixtures/a_core/` 73 �
 - [ ] C1 **兩個**分類欄位各自通過五處斷言
 - [ ] C2 依 §6.6 表格逐筆斷言 0／正整數／空／無法解析／負數的 typed value、旗標、warning 分級、UI 文字（對所有數字都設 `sourceZero` 要失敗）
 - [ ] C3 `N/A`／`NA`／`""` 精確計數與 recordId
-- [ ] C4 三個獨立且**確為違規**的 mutation：raw 值遺失／facet 保留 `"0"`／文字 sentinel 塌成同一值。**不可用「分類 typed value 轉 null」**（那是 §6.6 規定的正確行為）
+- [x] C4 三個獨立 mutation；**C6 補長文字 `rawVariants` 不出現在任何輸出**（index／shard fieldFlags／全域字串掃描三道）
 - [ ] BOM、quoted comma、embedded newline、CRLF、TAB、22,490 字元超長文字
 - [ ] 期別羅馬數字變體保留 raw
 

@@ -241,6 +241,79 @@ def test_a4_reverse_sentinel(a_core_rows, build_date, monkeypatch):
     assert "台灣預計受試者人數" in bad_big.display_fields, "衝突欄位不該冒出具體值"
 
 
+#: §6.4.5／F3 把這四欄移出 `displayFields` 後，它們在卡片上完全看不見——
+#: 「漏算長文字衝突」因此沒有任何 UI 徵兆，而後果是 `latestAmbiguous` 漏報。
+LONG_TEXT = ("試驗目的", "主要評估指標", "納入條件", "排除條件")
+
+
+def _long_only_conflict_rows(a_core_rows, field: str) -> list[dict]:
+    """把 CMP-032 的同日兩列改成**只有 `field` 這一個長文字欄位**有語意差異。
+
+    CMP-032 原本 cohort=2 且**無衝突**，是乾淨的 donor——用本來就有衝突的
+    Trial（如 BIG-001）會分不出「長文字衝突被抓到」與「別的欄位衝突被抓到」。
+    """
+    rows = []
+    seen = 0
+    for r in a_core_rows.values():
+        r = dict(r)
+        if r[PROTOCOL] == "CMP-032":
+            seen += 1
+            if seen == 2:
+                r[field] = r[field] + "（第二版補充）"
+                r["TFDA收文號"] = "A4-LONG-CONFLICT"
+        rows.append(r)
+    assert seen == 2, "CMP-032 必須是同日兩列，fixture 變了就要重挑 donor"
+    return rows
+
+
+@pytest.mark.parametrize("field", LONG_TEXT)
+def test_a4_long_text_only_conflict(a_core_rows, build_date, field):
+    """A4：四個長文字欄位**各自為唯一衝突來源**時仍須 `latestAmbiguous=true`。
+
+    只對 9 個卡片欄位做衝突判定的實作**能通過原本的 A4**——因為它的 fixture
+    用的是短欄衝突。這四條才殺得死那個弱化版本。
+    """
+    rows = _long_only_conflict_rows(a_core_rows, field)
+    t = next(t for t in build_trials(rows, build_date) if "CMP-032" in t.protocol_raw)
+
+    assert t.conflict_fields == [field], (
+        f"{field} 須是唯一衝突欄位，實得 {t.conflict_fields}"
+    )
+    assert t.latest_ambiguous is True
+    # 衝突欄位在 displayFields 中完全省略（§6.4.5），不是給 {typed: null}
+    assert field not in t.display_fields
+
+
+@pytest.mark.parametrize("field", LONG_TEXT)
+def test_a4_long_text_conflict_reaches_the_artifact(a_core_rows, build_date, field):
+    """衝突欄位名**必須進 `conflictFields` 並被序列化**——卡片才顯示得出泛化警示。
+
+    模型算對但沒寫進 artifact 時，前端看到的是一張「什麼都沒說」的正常卡片，
+    而那是誤導：使用者會以為那個欄位沒有爭議。
+    """
+    rows = _long_only_conflict_rows(a_core_rows, field)
+    out = build_artifacts(build_trials(rows, build_date), **BUILD_KW)
+    entry = next(t for t in out.logical["trials-index.json"]["trials"]
+                 if "CMP-032" in t["protocolRaw"])
+
+    assert entry["conflictFields"] == [field]
+    assert entry["latestAmbiguous"] is True
+    # 長文字不在 displayFields（F3），但衝突事實仍完整傳達
+    assert field not in entry["displayFields"]
+
+
+def test_a4_donor_has_no_conflict_without_mutation(a_core_rows, build_date):
+    """**反向哨兵**：未變造的 CMP-032 不得有任何衝突。
+
+    沒有這條，一個「恆報 latestAmbiguous」的實作會讓上面八條全綠。
+    """
+    t = next(t for t in build_trials(list(a_core_rows.values()), build_date)
+             if "CMP-032" in t.protocol_raw)
+    assert len(t.latest_cohort) == 2
+    assert t.conflict_fields == []
+    assert t.latest_ambiguous is False
+
+
 # ---------------------------------------------------------------- A5
 
 def test_a5_canonical_multiset_with_multiplicity(a_core_rows):
@@ -466,6 +539,64 @@ def test_a9_loose_key_does_not_affect_convergence(a_core_rows, build_date, monke
     off = {t.id: sorted(r.rid for r in t.records)
            for t in build_trials(list(a_core_rows.values()), build_date)}
     assert off == base
+
+
+def test_a9_whitespace_merge_crossed_with_loose_key(a_core_rows, build_date):
+    """A9：**whitespace merge × looseKey 的交叉案例**（v0.9）。
+
+    `MK-3475-158` 與 `MK3475-158` 是兩個 Trial、同一個 loose group（連字號有無，
+    §6.2 不折疊）。再給前者加三個前後空白變體後：
+
+    - 那三個變體必須**合併進** `MK-3475-158`，Trial 總數不變；
+    - group 的成員單位是 **identity key**，仍恰為 2 個；
+    - 合併後的 Trial 在 group 內**只出現一次**。
+
+    **這條堵的弱化實作是**：對每個 raw variant 各建一個 Trial（完全不合併），
+    再讓 looseKey 把它們揭露成近似群——UI 上看起來「有揭露」，實際卻把 §6.2
+    要求合併的東西降級成了「只揭露不合併」。
+    """
+    rows = [dict(r) for r in a_core_rows.values()]
+    base = "MK-3475-158"
+    sibling = "MK3475-158"
+    variants = [base + " ", "　" + base, base + " "]
+    for i, p in enumerate(variants):
+        v = dict(next(r for r in rows if r[PROTOCOL] == base))
+        v[PROTOCOL] = p
+        v["TFDA收文號"] = f"A9-CROSS-{i}"
+        rows.append(v)
+
+    before = build_trials(list(a_core_rows.values()), build_date)
+    after = build_trials(rows, build_date)
+    assert len(after) == len(before), "空白變體不得新增 Trial"
+
+    merged = [t for t in after if base in t.protocol_raw]
+    assert len(merged) == 1
+    assert set(merged[0].protocol_raw) == {base, *variants}
+
+    lk = loose_key(base)
+    assert loose_key(sibling) == lk, "fixture 前提：兩者同一個 loose key"
+
+    protocols = {p for t in after for p in t.protocol_raw if identity_normalize(p)}
+    groups = near_duplicate_groups(protocols)
+    assert sorted(groups[lk]) == sorted(
+        {identity_normalize(base), identity_normalize(sibling)}
+    ), "成員單位是 identity key，不是 raw 值"
+
+    # 合併後的 Trial 在 group 內只出現一次
+    in_group = [t for t in after if t.near_duplicate_group == lk]
+    assert len(in_group) == 2
+    assert sum(1 for t in in_group if t.id == merged[0].id) == 1
+
+
+def test_a9_cross_case_variants_really_differ(a_core_rows):
+    """**保護 fixture 本身**：三個變體確實只差前後空白，且與 sibling 的 loose key 相同。
+
+    變體若不慎寫成內部空白差異，上一條會變成在測另一條規則而看不出來。
+    """
+    base = "MK-3475-158"
+    for p in (base + " ", "　" + base, base + " "):
+        assert p != base and p.strip() == base
+    assert identity_normalize("MK3475-158") != identity_normalize(base)
 
 
 # ---------------------------------------------------------------- A10

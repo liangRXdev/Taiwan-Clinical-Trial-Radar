@@ -213,3 +213,89 @@ def test_collision_report_rejects_v08_flat_shape():
         ],
     }]})
     assert ok["groupCount"] == 1
+
+
+# ---------------------------------------------------------------- A1 的四類合併案例
+
+def _variant(donor: dict, protocol: str, receipt: str) -> dict:
+    """由 donor 複製一列並換掉 protocol 與收文號。
+
+    **收文號必須換掉**：不換的話兩列逐位元相同，測到的會是「重複列」
+    （§6.3.2 的 duplicate ordinal）而不是「空白變體合併」，那是另一條規則。
+    """
+    v = dict(donor)
+    v[PROTOCOL] = protocol
+    v["TFDA收文號"] = receipt
+    return v
+
+
+def _donor(a_core_rows) -> dict:
+    return next(
+        r for r in a_core_rows.values()
+        if identity_normalize(r[PROTOCOL]) and r[PROTOCOL] == r[PROTOCOL].strip()
+    )
+
+
+#: A1 指名的四類「應合併」案例（v0.9）。
+#: 原文只說「另須有應合併案例」，可被**兩筆逐位元相同的列**充數——
+#: 那樣 v0.8 最核心的新行為完全沒有被驗收。
+A1_MERGE_CLASSES = [
+    ("僅前導空白", lambda p: [" " + p]),
+    ("僅尾隨空白", lambda p: [p + " "]),
+    ("前後皆有空白", lambda p: ["\t" + p + "\n"]),
+    ("三個以上 raw variant", lambda p: [p + " ", "　" + p, p + " "]),
+]
+
+
+@pytest.mark.parametrize("label,make", A1_MERGE_CLASSES, ids=[c[0] for c in A1_MERGE_CLASSES])
+def test_a1_merge_classes(a_core_rows, build_date, label, make):
+    """A1：四類「應合併」案例各自寫死 membership、`protocolRaw[]` 與 warning oracle。"""
+    from trial_radar.identity import canonical_serialization, sha256hex, trial_id
+
+    rows = [dict(r) for r in a_core_rows.values()]
+    donor = _donor(a_core_rows)
+    base = donor[PROTOCOL]
+
+    added = [
+        _variant(donor, p, f"A1-{label}-{i}")
+        for i, p in enumerate(make(base))
+    ]
+    rows.extend(added)
+
+    expected_protocols = {base} | {v[PROTOCOL] for v in added}
+    expected_tid = trial_id(f"P:{identity_normalize(base)}")
+
+    trials = build_trials(rows, build_date)
+    merged = [t for t in trials if t.id == expected_tid]
+    assert len(merged) == 1, f"{label}：{len(expected_protocols)} 個寫法必須是一個 Trial"
+    t = merged[0]
+
+    # (1) `protocolRaw[]` 的精確集合——distinct、昇序（§6.2 的基數封存）
+    assert set(t.protocol_raw) == expected_protocols
+    assert t.protocol_raw == sorted(set(t.protocol_raw))
+
+    # (2) fingerprint → trialId 的 group membership，逐列寫死而非只比總數
+    expected_fps = {sha256hex(canonical_serialization(r)) for r in [donor] + added}
+    actual_fps = {sha256hex(canonical_serialization(r.raw)) for r in t.records}
+    assert expected_fps <= actual_fps, f"{label}：每一列都要落進同一個 Trial"
+
+    # (3) warning oracle：一則，含全部變體
+    groups = whitespace_only_variants(rows)
+    target = [g for g in groups if g["identityNormalized"] == identity_normalize(base)]
+    assert len(target) == 1
+    assert set(target[0]["rawProtocols"]) == expected_protocols
+    assert target[0]["trialId"] == expected_tid
+
+
+def test_a1_merge_classes_are_distinguishable(a_core_rows):
+    """**保護 fixture 本身**：四類產生的 protocol 兩兩不同，否則參數化是假的。
+
+    四個 case 若不慎產出同一組字串，上面四條會變成同一條跑四次而看不出來。
+    """
+    base = _donor(a_core_rows)[PROTOCOL]
+    produced = [tuple(make(base)) for _, make in A1_MERGE_CLASSES]
+    assert len(set(produced)) == len(produced)
+    # 且每一類都確實只差前後空白
+    for _, make in A1_MERGE_CLASSES:
+        for p in make(base):
+            assert p != base and p.strip() == base
