@@ -13,7 +13,9 @@ export default defineConfig({
     sourcemap: false,
   },
   test: {
-    environment: "node",
+    // 純邏輯測試不需要 DOM，但 UI render 模組要。happy-dom 比 jsdom 快一個數量級，
+    // 而 G1／G2 的 viewport 與對比量測本來就不能靠模擬 DOM——那是 Playwright 的工作。
+    environment: "happy-dom",
     include: ["tests/web/**/*.test.ts"],
   },
 });

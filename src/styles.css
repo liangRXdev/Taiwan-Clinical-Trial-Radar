@@ -1,0 +1,213 @@
+/*
+ * 設計 token 沿用 pharmacy-portal／dx-ebm-calc／tx-ebm-calc 的同一套（house style）。
+ * 暖米色底是刻意的，**不要換成冷灰**。
+ *
+ * 對比的硬性限制（實測值）：
+ * - `--text-muted` #6B7280 on #FFFFFF = 4.83:1 ✅；on #F5F0E8 = 4.26:1 ❌
+ *   → **只可用在白卡內**。米色裸底（.disclaimer、頁尾）一律用 --text-primary。
+ * - `--accent` on 白 = 4.83:1 ✅；on 米色裸底 = 4.26:1 ❌ → 裸底連結用 --accent-hover。
+ * - `--warning`／`--success` **不當文字色**；警示文字用 --warn-text（on #FFF3E0 = 6.20:1）。
+ *
+ * **不做 dark mode**（設計決策）：整個工具集在 pharmacy-portal 底下要是同一個身分。
+ */
+
+:root {
+  --bg-primary: #f5f0e8;
+  --bg-card: #ffffff;
+  --accent: #3d7a8a;
+  --accent-hover: #2e6b7a;
+  --accent-light: rgba(61, 122, 138, 0.08);
+  --text-primary: #2c2c2c;
+  --text-muted: #6b7280;
+  --border: #e0d9ce;
+  --danger: #c0392b;
+  --success: #27ae60;
+  --warning: #e67e22;
+  --warn-text: #8a4b08;
+  --radius: 8px;
+  --mono: "JetBrains Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg-primary);
+  font-family: "Noto Sans TC", sans-serif;
+  color: var(--text-primary);
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.mono { font-family: var(--mono); }
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+
+/* 跳至主內容——鍵盤使用者不必逐一 tab 過篩選面板（G3） */
+.skip-link {
+  position: absolute; left: -9999px;
+  background: var(--bg-card); color: var(--text-primary);
+  padding: 0.5rem 0.75rem; border: 1px solid var(--accent); border-radius: var(--radius);
+}
+.skip-link:focus { left: 1rem; top: 1rem; z-index: 10; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* 裸底上的連結：--accent 只有 4.26:1，一律用 --accent-hover（5.29:1） */
+a { color: var(--accent-hover); }
+.card a { color: var(--accent); }
+
+h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+h2 { font-size: 1.15rem; }
+
+.site-header .lede { margin: 0 0 1rem; font-size: 0.88rem; }
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-top: 1.25rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+.card__title { font-size: 1.05rem; margin: 0 0 0.25rem; }
+/* .hint 在白卡內，muted 合規（4.83:1） */
+.hint { font-size: 0.78rem; color: var(--text-muted); margin: 0 0 0.75rem; }
+
+/* ---------------------------------------------------------------- layout */
+
+.layout { display: grid; grid-template-columns: 260px 1fr; gap: 1.25rem; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+
+/* ---------------------------------------------------------------- search */
+
+.searchbar { display: flex; gap: 0.5rem; margin-top: 1rem; }
+.searchbar input {
+  flex: 1; padding: 0.55rem 0.7rem; font-size: 0.95rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-card); color: var(--text-primary);
+}
+.searchbar input:focus-visible,
+.filters input:focus-visible,
+.scope input:focus-visible,
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent-hover);
+  outline-offset: 2px;
+}
+
+.result-count { margin: 1rem 0 0; font-size: 0.88rem; }
+
+/* ---------------------------------------------------------------- chips */
+
+.chip {
+  display: inline-block; font-size: 0.72rem; line-height: 1.5;
+  padding: 0.05rem 0.45rem; border-radius: 999px; border: 1px solid;
+  margin-right: 0.35rem;
+}
+/* 顏色不是唯一訊息載體：每一態都帶 ⚠ / – 前綴（見 dom.ts 的 chip()） */
+.chip--warn { background: #fff3e0; border-color: #ffcc80; color: var(--warn-text); }
+.chip--info { background: var(--accent-light); border-color: var(--accent); color: var(--accent-hover); }
+.chip--muted { background: #fff; border-color: var(--border); color: var(--text-muted); }
+
+.alert { border: 1px solid; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.8rem; margin: 0.5rem 0; }
+.alert--info { background: var(--accent-light); border-color: var(--accent); color: var(--accent-hover); }
+.alert--warn { background: #fff3e0; border-color: #ffcc80; color: var(--warn-text); }
+.alert--error { background: #fdf3f2; border-color: #ef9a9a; color: var(--danger); }
+
+/* ---------------------------------------------------------------- result card */
+
+.card--result { padding: 1rem 1.1rem; }
+.card__protocol { margin: 0.1rem 0 0.5rem; font-size: 0.82rem; color: var(--text-muted); }
+.card__flags { margin-bottom: 0.5rem; }
+
+.card__fields { display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.75rem; margin: 0; }
+.card__fields dt { font-size: 0.74rem; color: var(--text-muted); }
+.card__fields dd { margin: 0; font-size: 0.85rem; }
+.fv__raw { font-family: var(--mono); }
+.fv--none { color: var(--text-muted); }
+
+.card__meta { margin: 0.6rem 0 0; font-size: 0.76rem; color: var(--text-muted); }
+.hit { margin-top: 0.5rem; font-size: 0.76rem; }
+.hit__fields { margin-right: 0.4rem; }
+
+/* ---------------------------------------------------------------- scope */
+
+.scope { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.9rem 1rem; margin-top: 1rem; }
+.scope__current { margin: 0 0 0.6rem; font-size: 0.82rem; font-weight: 500; }
+.scope__group { border: 0; padding: 0; margin: 0 0 0.5rem; }
+.scope__group legend { font-size: 0.76rem; color: var(--text-muted); padding: 0; }
+.scope__option { font-size: 0.82rem; display: flex; align-items: baseline; gap: 0.4rem; }
+.scope__cost { color: var(--text-muted); font-size: 0.74rem; }
+.zero-hint { margin-top: 1rem; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+
+/* ---------------------------------------------------------------- filters */
+
+.filters { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; }
+.filter__group { border: 0; padding: 0; margin: 0 0 1.1rem; }
+.filter__title { font-size: 0.82rem; font-weight: 500; padding: 0; display: block; margin-bottom: 0.3rem; }
+.filter__searchbox { margin-bottom: 0.35rem; }
+.filter__search, .filter__range {
+  width: 100%; padding: 0.35rem 0.5rem; font-size: 0.82rem;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-card); color: var(--text-primary);
+}
+/* 371 個申請者：捲動容器 + type-ahead，不是一次攤平 */
+.filter__options { max-height: 15rem; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem; }
+.filter__option { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.8rem; padding: 0.1rem 0.15rem; }
+.filter__option[hidden] { display: none; }
+.filter__count { color: var(--text-muted); font-size: 0.72rem; }
+
+/* ---------------------------------------------------------------- stats */
+
+.card--stat { padding: 1rem; }
+.stat__table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.stat__table th, .stat__table td { border: 1px solid var(--border); padding: 0.35rem 0.5rem; text-align: left; }
+/* --accent 在 --accent-light 上只有 4.36:1，表頭文字用 --accent-hover（5.41:1） */
+.stat__table thead th { background: var(--accent-light); color: var(--accent-hover); font-weight: 500; }
+.stat__table td { text-align: right; }
+.stat__row--special th { color: var(--text-primary); font-weight: 400; font-style: italic; }
+
+/* ---------------------------------------------------------------- detail */
+
+.detail__title { margin: 0 0 0.2rem; font-size: 1.25rem; }
+.detail__protocol { margin: 0 0 0.6rem; font-size: 0.85rem; }
+.detail__variants { font-size: 0.8rem; }
+.detail__group { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; margin-top: 1rem; }
+.detail__date { margin: 0 0 0.4rem; font-size: 1rem; }
+.detail__diff { font-size: 0.78rem; color: var(--text-muted); margin: 0.3rem 0 0.6rem; }
+.detail__record { border-top: 1px solid var(--border); padding-top: 0.7rem; margin-top: 0.7rem; }
+.detail__rid { font-size: 0.7rem; color: var(--text-muted); margin: 0 0 0.4rem; }
+.detail__fields { margin: 0; }
+.detail__row { display: grid; grid-template-columns: max-content 1fr; gap: 0.1rem 0.75rem; padding: 0.15rem 0; }
+.detail__row dt { font-size: 0.74rem; color: var(--text-muted); }
+.detail__row dd { margin: 0; font-size: 0.85rem; }
+/* 長文字**保留原文換行、不截斷**（§7.3、E6） */
+.detail__long { white-space: pre-wrap; font-size: 0.82rem; }
+@media (max-width: 560px) {
+  .detail__row, .card__fields { grid-template-columns: 1fr; }
+  .detail__row dt, .card__fields dt { margin-top: 0.35rem; }
+}
+
+/* ---------------------------------------------------------------- disclaimer */
+
+/* 在米色裸底上，**不可用 --text-muted**（4.26:1 不過 AA） */
+.disclaimer {
+  margin-top: 2rem; padding: 0.9rem 1rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-card);
+  font-size: 0.78rem; color: var(--text-primary);
+}
+.disclaimer__title { font-size: 0.85rem; margin: 0 0 0.4rem; }
+.disclaimer__list { margin: 0; padding-left: 1.1rem; }
+
+/* ---------------------------------------------------------------- motion */
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
