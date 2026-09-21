@@ -111,16 +111,24 @@ def assign_identity_keys(rows: list[dict[str, str]]) -> list[IdentityKey]:
 
 
 def detect_identity_collision(rows: list[dict[str, str]], keys: list[IdentityKey]) -> None:
-    """§6.2／§6.3.4 第一層：兩個**不同 raw protocol** 正規化後相同 → 硬失敗。
+    """§6.2／§6.3.4 第一層：`strip(raw)` **不同**而 `identityNormalize` 後相同 → 硬失敗。
 
     fail-closed 而非保留為兩個 Trial：合併會誤配，保留兩個同鍵 Trial 會讓 URL 不唯一，
     硬失敗使月更新維持 last-known-good。
+
+    **分組鍵是 `strip(raw)` 不是 raw**（v0.8）。`identityNormalize` 的定義本身含 `strip()`，
+    以 raw 分組等於宣告「正規化不准折疊任何東西」，那樣正規化就沒有作用——實資料
+    18,736 列有 4 組僅尾隨一個空白的 protocol，照舊寫法管線一次都跑不完（exit 22）。
+
+    界線畫在 `strip` 而非「全部折疊」：尾隨空白在任何識別碼體系都不承載語意，不可能
+    用來區分兩個不同試驗；大小寫與 NFKC 全形折疊則**可能**（`abc-1` 與 `ABC-1` 未必
+    同一個計畫書），那兩類維持硬失敗。
     """
     by_key: dict[str, set[str]] = {}
     for row, key in zip(rows, keys):
         if key.kind != "P":
             continue
-        by_key.setdefault(key.value, set()).add(row[PROTOCOL])
+        by_key.setdefault(key.value, set()).add(row[PROTOCOL].strip())
 
     groups = [
         {
@@ -136,6 +144,26 @@ def detect_identity_collision(rows: list[dict[str, str]], keys: list[IdentityKey
             f"{len(groups)} 個 identity 正規化碰撞群",
             {"groups": groups},
         )
+
+
+def whitespace_only_variants(rows: list[dict[str, str]]) -> list[dict[str, object]]:
+    """§6.2：僅前後空白不同而被合併的 protocol 群，供 QA report 揭露。
+
+    **合併是靜默的，揭露不是。** 這些群不會造成硬失敗，但它們是上游輸入品質的訊號；
+    只在程式裡合併而不寫進結構化報告，下個月多出一組時沒有任何東西會顯示出來。
+    """
+    by_norm: dict[str, set[str]] = {}
+    for row in rows:
+        raw = row[PROTOCOL]
+        norm = identity_normalize(raw)
+        if not norm:
+            continue
+        by_norm.setdefault(norm, set()).add(raw)
+    return [
+        {"identityNormalized": k, "rawProtocols": sorted(v)}
+        for k, v in sorted(by_norm.items())
+        if len(v) > 1
+    ]
 
 
 def detect_truncation_collisions(

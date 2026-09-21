@@ -6,9 +6,13 @@
 
 本輪反驗出 **GAP-8（High）／GAP-9／GAP-10／GAP-11（Medium）／GAP-12（Low）**，全部 open，見 `.ai-review/fixture-findings-m05.md`。
 
-M1 已完成 ETL 主體：`trial_radar/` 十個模組涵蓋 §6 全部規則、§9.1 取得與驗證、§9.3 輸出契約、§9.3.6 驗證器、§9.6 QA report、§9.2 promotion，＋ `scripts/build_data.py` CLI。**pytest 141 綠**（A 群 27／B 群 64／C 群 50），fixture 自檢 `run_all.py` 289 條斷言全綠。
+M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三支 CLI（`fetch_tfda.py`／`validate_schema.py`／`build_data.py`）。**pytest 171 綠**，fixture 自檢 `run_all.py` 289 條斷言全綠。
 
-下一步：`scripts/fetch_tfda.py` 與 `validate_schema.py` 拆成獨立 CLI、首次連網實跑、然後 **M2 前端**。
+**2026-09-21 首次連網實跑撞出兩個規格洞，已改為 v0.8**（見 `plan.md` §15）：§6.2 的碰撞規則照字面使管線 exit 22 一次都跑不完；§6.4.5 與 F3 直接衝突，照 §6.4.5 實作的 index 是 F1 門檻的 10.2 倍。**四輪 prose 覆審與 12 個 fixture GAP 都沒抓到這兩個**——fixture 是照規格寫的，規格與現實的落差它結構上看不見。
+
+實跑結果與規格的獨立實測逐一相符：5,888 Trial／18,736 列／846 平手組／143 衝突組／18 nearDuplicateGroup。
+
+下一步：**M2 前端**。
 
 **M1 前不要寫 ETL 實作程式碼**（`artifact_sample/build_sample.py` 是 B8 的證據，不是實作，M1 不得沿用）。
 
@@ -84,8 +88,9 @@ M1 已完成 ETL 主體：`trial_radar/` 十個模組涵蓋 §6 全部規則、�
 - [ ] `git init` 後首個 commit 已完成；建 GitHub repo（public／private 待定）
 - [x] `.gitignore`（排除下載的 ZIP／CSV 與產生物）
 - [ ] `LICENSE`、`pyproject.toml`、`package.json`
-- [ ] `scripts/fetch_tfda.py` — fail-closed 下載與驗證，error code 依 §9.5，每種相異 exit code
-- [ ] `scripts/validate_schema.py` — 釘住 16 欄欄名與順序
+- [x] `scripts/fetch_tfda.py` — fail-closed 下載與驗證，error code 依 §9.5，每種相異 exit code
+- [x] `scripts/validate_schema.py` — 釘住 16 欄欄名與順序（含 §6.3 的 U+001F 檢查）
+- [x] **首次連網實跑**（2026-09-21）：ZIP 43,203 KiB／CSV 166,450 KiB／18,736 列，`sourceSha256` 與 QA report 見 §15。量出 F1 Tier 0 = **924.0 KiB brotli**（餘 612 KiB 給 bundle），`applicant` facet 371 bucket
 - [ ] `scripts/build_data.py` — identity 收斂、cohort 與 ambiguity 判定、sentinel 分型、日期規則、產出 §9.3 全部 artifact
 - [ ] 整體 digest 與 referential integrity 驗證；內容雜湊檔名；`manifest.json` 為唯一固定 URL
 - [ ] promotion：替換 + `git add -A` + commit 收攏為最後三步；保證「不存在部分發布的 commit」（§9.2.1）

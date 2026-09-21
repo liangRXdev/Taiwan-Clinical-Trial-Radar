@@ -629,3 +629,116 @@ Windows 與精簡 Linux 映像沒有系統 tz 資料庫。缺套件時 `ZoneInfo
 1. `scripts/fetch_tfda.py` 與 `scripts/validate_schema.py` 拆成獨立 CLI（目前都在 build_data.py 內）
 2. **首次連網實跑**：量 `stats.json` 大小與 `applicant` 的 distinct 值數，補 F1 的 Tier 0 總和
 3. M2 前端
+
+> 1 與 2 已於 2026-09-21 完成，見下一節——2 撞出兩個規格洞，規格改為 v0.8。
+
+---
+
+## 2026-09-21 — 首次連網實跑：兩個規格洞，規格改為 v0.8
+
+M1 收尾的三件事：拆兩支獨立 CLI、首次連網實跑、量 F1。第二件把第三件變成了規格修訂。
+
+### 先做的：三支 CLI 收斂到同一張 exit code 表
+
+`scripts/fetch_tfda.py`（transport／archive／decode）與 `scripts/validate_schema.py`
+（schema／content／U+001F）拆出來，`trial_radar/cli.py` 收攏 §9.5 的 exit code 對照、
+stderr 格式與報告輸出。三支各自複製一份 try/except 遲早會漂移成「其中一支把某個 code
+印成 exit 1」——而那在 CI 上看起來和成功以外的任何失敗一樣。
+
+`tests/test_b_cli.py`（16 測試）驗的是 **process 的 exit code**，不是函式拋的 code。
+兩者不可互相取代：對應表在 CLI 裡，函式層測試再綠也不會發現某支 CLI 把所有失敗都回成 1。
+
+順手修掉一個潛在陷阱：`sourceSha256` 在 `--fetch` 下是 ZIP 的雜湊、在 `--source` 下是
+CSV 的——同一個欄位兩種定義。§9.6 排除它的論據明寫「ZIP metadata 變動會改變 source SHA」，
+故有 ZIP 時以 ZIP 為準，並加 `sourceKind` 標明；否則換執行模式造成的 SHA 改變會被誤讀成
+上游換了內容（H3 的冪等驗證正是比這個值）。
+
+### 然後：真實資料一跑就停在第一道硬失敗
+
+```
+$ uv run python scripts/build_data.py --source .cache/205.csv --dry-run
+[IDENTITY_COLLISION] layer=content 4 個 identity 正規化碰撞群     exit 22
+```
+
+4 組僅**尾隨一個空白**的 protocol（`CYTB323J12201` 15 列 vs `CYTB323J12201 ` 2 列，
+另三組同型）。`identityNormalize` 的定義本身含 `strip()`，而 §6.2 說「不同 raw 正規化後
+相同即碰撞」——**照字面等於要求正規化不准折疊任何東西**，那樣正規化就沒有作用。
+
+規格自己有兩處反證：§9.3.5 寫的 `trialCount: 5888` 是合併後的數字；而「實測 0 碰撞」的
+5,882 數的是 distinct **normalized** 值，從未與 5,887 個 distinct **raw** 對照——
+**那個量法在定義上就看不見碰撞**。
+
+v0.8 把界線畫在 `strip`：尾隨空白在任何識別碼體系都不承載語意；大小寫與 NFKC 全形折疊
+**可能**區分兩個不同計畫書，那兩類維持硬失敗（A7 的碰撞案例用的正是那兩類，不受影響）。
+合併是靜默的，揭露不是——QA report 加 `WHITESPACE_ONLY_PROTOCOL_VARIANT`，實跑列出 4 組。
+
+### 接著：F1 量出來是門檻的 10.2 倍
+
+| trials-index 變體 | raw | gzip | brotli |
+|---|---:|---:|---:|
+| §6.4.5 字面（13 個呈現欄位全放） | 103,564 KiB | 15,621 KiB | 9,011 KiB |
+| 4 個長文字欄位移出 shard | 11,120 KiB | 1,611 KiB | 915 KiB |
+
+排除條件 39.6 MiB ＋ 納入條件 37.6 MiB ＋ 主要評估指標 6.9 MiB ＋ 試驗目的 5.9 MiB
+＝ index raw 的 **92.6%**。
+
+**這不是新決策，是 §6.4.5 與 F3 本來就直接衝突。** F3 早已要求「初始 payload 的 schema
+不含這些欄位鍵」，§6.4.5 卻說 `displayFields` 涵蓋全部 13 欄——照哪一條寫都會違反另一條，
+**四輪覆審都沒抓到**。收斂語意不動：§6.4.2 的衝突判定與 §6.4.3 的 `rawVariants` 仍對
+全部 13 欄計算，`conflictFields` 仍可含長文字欄位，改的只是序列化進 index 的子集。
+
+另一半是量測口徑：規格全程以 gzip 計，但部署在 Cloudflare Pages 實際送 brotli，同一份
+位元組差 43%。**量一個使用者從來不會付的數字，正是 F1 自己那段話警告的自我誤導。**
+manifest 因此加 `brotliBytes`（只算 5 個 top-level 檔），§8.5／D7 的 UI 下載大小改取它。
+
+### Tier 0 實測（2026-09-21，staging 的真實 artifact）
+
+| 檔案 | raw | gzip | brotli |
+|---|---:|---:|---:|
+| `trials-index.<h>.json` | 11,119.6 KiB | 1,611.0 KiB | 914.8 KiB |
+| `stats.<h>.json` | 22.8 KiB | 4.5 KiB | 3.9 KiB |
+| `manifest.json` | 28.7 KiB | 7.0 KiB | 5.4 KiB |
+| **合計** | | **1,622.6 KiB** | **924.0 KiB** |
+
+以 brotli 計**餘 612.0 KiB** 給 HTML／JS／CSS／字型；以 gzip 計則超標 86.6 KiB。
+`stats.json` 的 cardinality 疑慮解除：`applicant` 371 bucket、`phase` 7、`scale` 3，
+三者的 `buckets + unprovided + conflicted` 均恰等於 5,888（§9.3.6 I6 成立），整份 3.9 KiB。
+
+按需 tier 的 brotli 實測全部低於 v0.5 的 gzip 估值（`short`+`all` 696.1、`all`+`latest`
+1,477.6、`all`+`all` 1,840.7 KiB）——**估算一路偏保守，但偏的方向不一致**（index 估值
+偏低 23%），估值一律不可當驗收基準。
+
+### 獨立實作與規格的實測逐一相符
+
+5,888 Trial／18,736 列／**846 平手組**／**143 衝突組**／**18 nearDuplicateGroup**／
+13 protocolNonIdentifier／152 suspectedTestRow——前三個與 §6.1、§6.2.1、D1 記的數字完全一致，
+而那些是規格作者用另一套一次性腳本量的。
+
+### 測試
+
+| 測試 | 數 |
+|---|---:|
+| 先前（M1 ETL 主體） | 141 |
+| B 群 CLI exit code（`test_b_cli.py`） | 16 |
+| §6.2 空白合併（`test_a_whitespace_merge.py`） | 6 |
+| F1／F3 payload 邊界（`test_f_payload.py`） | 8 |
+| **pytest 合計** | **171** |
+
+新增的 14 條全部做過反向驗證：把兩個改動各自還原成 v0.7 行為後，**5 條轉紅**。
+其中 `test_long_text_content_absent_from_index_bytes` 第一版**沒轉紅**——canary 從來源列
+取值，抽中的是衝突欄位，而衝突欄位本來就從 `displayFields` 省略（§6.4.5），於是舊行為下
+照樣綠。改成從 model 的 `display_fields` 取（只有那些值在舊行為下真的會被序列化）才守得住。
+**「加了斷言」與「那條斷言守得住東西」是兩件事。**
+
+### 教訓
+
+**凍結 fixture 證明的是「實作符合規格」，證明不了「規格符合現實」。** v0.5 起反覆用 fixture
+反驗規格，找出 12 個 GAP，但 fixture 是照規格寫的——規格與真實資料的落差它結構上看不見。
+這兩個洞，一個讓管線一次都跑不完，一個讓 F1 超標 10 倍，四輪 prose 覆審加 289 條 fixture
+斷言全數漏掉，**第一次連網 90 秒內兩個都現形**。
+
+新專案的第一次連網實跑要排在**規格定案之後、實作完成之前**，不是排在最後當驗收。
+
+### 下一步
+
+**M2 前端**（D／E／F／G 群驗收）。F1 的餘裕是 612 KiB brotli，bundle 預算要照這個數字編。

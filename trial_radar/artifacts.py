@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from .comparison import comparison_key  # noqa: F401  (供 stats 一致性引用者取得同一實作)
 from .fields import (
+    CARD_FIELDS,
     CATEGORICAL_FIELDS,
     LONG_SEARCH_FIELDS,
     PROTOCOL,
@@ -31,6 +32,22 @@ FACETS: dict[str, str] = {
     "scale": "本臨床試驗規模",
     "applicant": "臨床試驗申請者",
 }
+
+
+#: §9.3.5：brotli 品質。**必須與 Cloudflare Pages 實際使用的設定一致**，否則 §8.5 顯示的
+#: 下載大小會系統性偏離使用者真正付的位元組——而那個數字存在的唯一目的就是告訴使用者成本。
+BROTLI_QUALITY = 11
+
+
+def brotli_size(data: bytes) -> int:
+    """壓縮後位元組數。
+
+    `brotli` 不在標準庫，**缺套件時直接拋**，不退回 gzip：退回會讓 manifest 悄悄改報
+    一個大 43% 的數字，而欄位名仍叫 `brotliBytes`——那比缺欄位更難發現。
+    """
+    import brotli
+
+    return len(brotli.compress(data, quality=BROTLI_QUALITY))
 
 
 def canonical_json_bytes(obj) -> bytes:
@@ -81,8 +98,15 @@ def _trial_json(t: Trial) -> dict:
         "latestCohortCount": len(t.latest_cohort),
         "recordCount": len(t.records),
         "latestAmbiguous": t.latest_ambiguous,
+        # §6.4.4：`conflictFields` 涵蓋**全部 13 個**呈現欄位，長文字欄位也可入列——
+        # 卡片仍要顯示「同日多筆資料不一致」，只是不顯示候選值。
         "conflictFields": t.conflict_fields,
-        "displayFields": {k: _field_json(v) for k, v in t.display_fields.items()},
+        # §6.4.5／F3：**只序列化 9 個卡片欄位**。四個長文字欄位不在 Trial 層級輸出，
+        # 詳情頁逐 record 從 shard 取原文。照 v0.7 把 13 欄全放時 index 是
+        # 15,621 KiB gzip（F1 門檻的 10.2 倍），長文字佔 raw 位元組 92.6%。
+        "displayFields": {
+            k: _field_json(v) for k, v in t.display_fields.items() if k in CARD_FIELDS
+        },
         "searchShortLatest": [
             {
                 "r": r.rid,
@@ -219,9 +243,15 @@ def build_artifacts(
         meta[name] = {
             "path": path,
             "bytes": len(data),
-            # §9.3.5：gzipBytes 是 §8.5 的 UI 顯示下載大小來源，**不得在前端寫死**
+            # gzipBytes 保留供 CI 對照與無 brotli 的部署環境 fallback
             "gzipBytes": len(gzip.compress(data, mtime=0)),
         }
+        # §9.3.5：**brotliBytes 才是 §8.5 的 UI 顯示下載大小來源**——Cloudflare Pages
+        # 對 JSON 實際送 brotli，顯示 gzip 等於對使用者高報約 43%。
+        # **只算 5 個 top-level 檔**：256 個 shard 不在 scope 切換器上、也不在 F1 的
+        # Tier 0 內，對它們跑 quality 11 會讓月更新多花數分鐘卻沒有任何讀者。
+        if not name.startswith("records/"):
+            meta[name]["brotliBytes"] = brotli_size(data)
 
     if source_updated_at is None:
         dates = [t.latest_source_date for t in trials if t.latest_source_date]

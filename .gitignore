@@ -10,6 +10,9 @@ __pycache__/
 .venv/
 dist/
 
+# 連網實跑的暫存（下載的 CSV／ZIP、量測用 staging 與 QA report）
+.cache/
+
 # 暫存輸出
 tests/fixtures/_*.txt
 .venv/

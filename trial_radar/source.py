@@ -175,3 +175,32 @@ def check_row_count(cur: int, prev: int | None) -> DropVerdict:
             {"prev": prev, "cur": cur, "drop": str(drop)},
         )
     return DropVerdict(drop, drop > WARN_THRESHOLD, False)
+
+
+def fetch_dataset(url: str = DATASET_URL, *,
+                  connect_timeout: float = 10.0,
+                  read_timeout: float = 120.0) -> FetchResult:
+    """transport 層唯一的連網進入點（§9.1）。
+
+    `requests` 在函式內載入，讓不連網的測試與 `validate_schema.py` 不必把它拉進來。
+
+    **例外一律轉成 `PipelineError`**：B2 要求呼叫端以 structured code 判定，
+    而一個逸出的 `requests` traceback 連 code 都沒有。逾時與連線中斷是不同的 code
+    （`HTTP_TIMEOUT` vs `HTTP_TRUNCATED`），因為處置不同——前者重試合理，後者要查上游。
+    """
+    import requests
+
+    try:
+        resp = requests.get(url, timeout=(connect_timeout, read_timeout))
+    except requests.Timeout as e:
+        raise PipelineError(ErrorCode.HTTP_TIMEOUT, str(e), {"url": url}) from e
+    except requests.RequestException as e:
+        raise PipelineError(ErrorCode.HTTP_TRUNCATED, str(e), {"url": url}) from e
+
+    declared = resp.headers.get("Content-Length")
+    return validate_response(
+        resp.status_code,
+        resp.headers.get("Content-Type", ""),
+        int(declared) if declared and declared.isdigit() else None,
+        resp.content,
+    )

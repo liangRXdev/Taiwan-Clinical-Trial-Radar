@@ -44,9 +44,11 @@ def build_quality_report(
     source_row_count: int,
     source_sha256: str,
     fetched_at: str,
+    source_kind: str = "zip",
     drop: DropVerdict,
     near_duplicates: dict[str, list[str]],
     previous: dict | None = None,
+    whitespace_variants: list[dict] | None = None,
 ) -> dict:
     """結構化 QA report。`warnings` 是**機器可讀**的清單，不是人看的字串拼接。"""
     warnings: list[dict] = []
@@ -62,6 +64,18 @@ def build_quality_report(
         )
     if drop.bootstrap:
         warnings.append({"code": "BOOTSTRAP", "note": "首次無 baseline，未做驟降比較"})
+
+    # §6.2：僅前後空白不同者靜默合併，**但揭露不是靜默的**。這些群不造成硬失敗，
+    # 卻是上游輸入品質的訊號；只在程式裡合併而不寫進結構化報告，下個月多出一組時
+    # 沒有任何東西會顯示出來。
+    for group in whitespace_variants or []:
+        warnings.append(
+            {
+                "code": "WHITESPACE_ONLY_PROTOCOL_VARIANT",
+                "identityNormalized": group["identityNormalized"],
+                "rawProtocols": group["rawProtocols"],
+            }
+        )
 
     flag_counts = _count_field_flags(trials)
     # 每一類 warning 級旗標都要進 warnings，並附**範例 recordId**（§9.6）
@@ -129,7 +143,14 @@ def build_quality_report(
             "conflictedTrials": len(conflicted),
             "dateUnknownTrials": sum(1 for t in trials if t.date_unknown),
         },
-        "provenance": {"sourceSha256": source_sha256, "fetchedAt": fetched_at},
+        # `sourceKind` 標明 `sourceSha256` 雜湊的是哪一層位元組：`zip`（連網取得，
+        # §9.6 排除它的論據就是針對 ZIP metadata）或 `csv`（`--source` 本機檔，沒有
+        # ZIP 可雜湊）。少了這個標記，換執行模式造成的 SHA 改變會被誤讀成上游換了內容。
+        "provenance": {
+            "sourceSha256": source_sha256,
+            "sourceKind": source_kind,
+            "fetchedAt": fetched_at,
+        },
         "dropComparison": {
             "drop": str(drop.drop) if drop.drop is not None else None,
             "warning": drop.warning,

@@ -59,6 +59,20 @@ TEXT_FIELDS: tuple[str, ...] = tuple(
     if c not in CATEGORICAL_FIELDS and c not in NUMERIC_FIELDS and c not in PERIOD_FIELDS
 )
 
+# §6.4.5／F3：四個長文字欄位。**不在 Trial 層級序列化進 trials-index**——
+# 照 v0.7 字面把 13 欄全放，index 是 15,621 KiB gzip（F1 門檻的 10.2 倍），
+# 其中這四欄佔 raw 位元組的 92.6%。詳情頁逐 record 從 shard 取原文（§7.3）。
+LONG_TEXT_FIELDS: tuple[str, ...] = (
+    "試驗目的", "主要評估指標", "納入條件", "排除條件",
+)
+
+# §6.4.5：`displayFields` 的鍵 = 呈現欄位扣除長文字欄位。
+# **收斂語意不受影響**：§6.4.2 的衝突判定與 §6.4.3 的 rawVariants 仍對全部 13 欄計算，
+# `conflictFields` 仍可含長文字欄位。改變的只有序列化進 index 的子集。
+CARD_FIELDS: tuple[str, ...] = tuple(
+    c for c in PRESENTATION_FIELDS if c not in LONG_TEXT_FIELDS
+)
+
 # §8.5 搜尋 scope 的欄位分層
 SHORT_SEARCH_FIELDS: tuple[str, ...] = (
     PROTOCOL, "臨床試驗計畫中文名稱", "臨床試驗申請者", "適應症中文", RECEIPT_NO,
@@ -68,5 +82,11 @@ LONG_SEARCH_FIELDS: tuple[str, ...] = ("試驗目的", "主要評估指標")
 assert len(COLUMNS) == 16
 assert len(PRESENTATION_FIELDS) == 13
 assert len(TEXT_FIELDS) == 7
+assert len(CARD_FIELDS) == 9
+# 長文字欄位必須是呈現欄位的子集，否則 CARD_FIELDS 會沉默地少扣
+assert set(LONG_TEXT_FIELDS) <= set(PRESENTATION_FIELDS)
+# LONG_SEARCH_FIELDS（可搜尋的 2 個長欄）是 LONG_TEXT_FIELDS 的真子集：
+# 納入條件／排除條件不可搜尋，但同樣不進 index
+assert set(LONG_SEARCH_FIELDS) < set(LONG_TEXT_FIELDS)
 # §9.3.4：searchShortLatest 的 `f` 順序固定為 SHORT_SEARCH_FIELDS
 assert len(SHORT_SEARCH_FIELDS) == 5

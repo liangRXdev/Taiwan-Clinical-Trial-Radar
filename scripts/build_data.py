@@ -21,8 +21,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from trial_radar.artifacts import build_artifacts  # noqa: E402
-from trial_radar.errors import EXIT_CODE_OF, ErrorCode, PipelineError  # noqa: E402
-from trial_radar.identity import near_duplicate_groups, sha256hex  # noqa: E402
+from trial_radar.cli import EXIT_CODE_EPILOG, report  # noqa: E402
+from trial_radar.errors import ErrorCode, PipelineError  # noqa: E402
+from trial_radar.identity import (  # noqa: E402
+    near_duplicate_groups,
+    sha256hex,
+    whitespace_only_variants,
+)
 from trial_radar.model import build_trials  # noqa: E402
 from trial_radar.normalize import identity_normalize  # noqa: E402
 from trial_radar.promotion import (  # noqa: E402
@@ -41,8 +46,8 @@ from trial_radar.source import (  # noqa: E402
     check_row_count,
     decode_csv,
     extract_csv,
+    fetch_dataset,
     parse_csv,
-    validate_response,
 )
 
 TAIPEI = zoneinfo.ZoneInfo("Asia/Taipei")
@@ -75,31 +80,10 @@ class RealGit:
         self._run("push")
 
 
-def _fetch(url: str) -> tuple[bytes, str]:
-    import requests
-
-    try:
-        resp = requests.get(url, timeout=(10, 120))
-    except requests.Timeout as e:
-        raise PipelineError(ErrorCode.HTTP_TIMEOUT, str(e)) from e
-    except requests.RequestException as e:
-        raise PipelineError(ErrorCode.HTTP_TRUNCATED, str(e)) from e
-
-    declared = resp.headers.get("Content-Length")
-    result = validate_response(
-        resp.status_code,
-        resp.headers.get("Content-Type", ""),
-        int(declared) if declared and declared.isdigit() else None,
-        resp.content,
-    )
-    return result.body, result.sha256
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="exit code 對照：\n"
-        + "\n".join(f"  {c.value:<26} {EXIT_CODE_OF[c]}" for c in ErrorCode),
+        epilog=EXIT_CODE_EPILOG,
     )
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--source", type=Path, help="本機 CSV（UTF-8 with BOM）")
@@ -117,11 +101,16 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.fetch:
-            zip_bytes, source_sha = _fetch(DATASET_URL)
-            csv_bytes = extract_csv(zip_bytes)
+            fetched = fetch_dataset(DATASET_URL)
+            # §9.6 排除 `sourceSha256` 的論據明寫「ZIP metadata 或列序變動會改變
+            # source SHA」——有 ZIP 時它就是 ZIP 的雜湊。`--source` 沒有 ZIP 可雜湊，
+            # 退回 CSV 雜湊；兩者值域不同，QA report 因此一併記 `sourceKind`，
+            # 否則換執行模式造成的 SHA 改變會被誤讀成上游換了內容。
+            source_sha, source_kind = fetched.sha256, "zip"
+            csv_bytes = extract_csv(fetched.body)
         else:
             csv_bytes = args.source.read_bytes()
-            source_sha = sha256hex(csv_bytes)
+            source_sha, source_kind = sha256hex(csv_bytes), "csv"
 
         text = decode_csv(csv_bytes)
         rows = parse_csv(text)
@@ -168,10 +157,12 @@ def main(argv: list[str] | None = None) -> int:
                     trials,
                     source_row_count=len(rows),
                     source_sha256=source_sha,
+                    source_kind=source_kind,
                     fetched_at=fetched_at,
                     drop=drop,
                     near_duplicates=near,
                     previous=prev,
+                    whitespace_variants=whitespace_only_variants(rows),
                 ),
                 ensure_ascii=False, indent=1,
             ),
@@ -194,10 +185,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     except PipelineError as e:
-        print(f"[{e.code.value}] layer={e.layer.value} {e.message}", file=sys.stderr)
-        if e.detail:
-            print(json.dumps(e.detail, ensure_ascii=False, indent=1)[:2000], file=sys.stderr)
-        return e.exit_code
+        return report(e)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
-# Taiwan Clinical Trial Radar — 規格 v0.7（consolidated）
+# Taiwan Clinical Trial Radar — 規格 v0.8（consolidated）
 
 > **這是唯一具規範效力的規格。** `Taiwan-Clinical-Trial-Radar-spec.md` v0.1 與本檔 v0.2–v0.4 均降為歷史文件，**不再具 normative 效力**。
 > 依據：2026-09-18 dataset 205 實測 ＋ Codex **四輪**覆審（`plan-review-r1`～`r4.md`、`plan-verdict-r1`～`r4.md`）＋ fixture 反驗（`fixture-findings-a.md`、`fixture-findings-m05.md`）。
-> 狀態：**14 項動工前契約已封存**（§14）。M0.5 完成後撞出 GAP-8～GAP-12 並改寫為 v0.6；第四輪限縮覆審（**Blocker 0**）指出 v0.6 的修訂自造 3 個 High、6 個 Medium，本版 v0.7 已全部修訂。**四輪 Blocker 走勢：2 → 0 → 1 → 0。**
+> 狀態：**14 項動工前契約已封存**（§14）。**v0.8 由 2026-09-21 的首次連網實跑觸發**——管線在真實資料上 exit 22，並量出 §6.4.5 與 F3 的直接衝突。見 §15。
+> 原狀態：M0.5 完成後撞出 GAP-8～GAP-12 並改寫為 v0.6；第四輪限縮覆審（**Blocker 0**）指出 v0.6 的修訂自造 3 個 High、6 個 Medium，本版 v0.7 已全部修訂。**四輪 Blocker 走勢：2 → 0 → 1 → 0。**
 
 ---
 
@@ -92,9 +93,19 @@
 
 ### 6.2 Identity normalization（與搜尋正規化分離）
 
-主鍵一律用 `identityNormalize`（§6.0）。實測對 5,882 個 protocol 產生 **0 個碰撞**。
+主鍵一律用 `identityNormalize`（§6.0）。
 
-兩個不同 raw protocol 正規化後相同 → 硬失敗 `IDENTITY_COLLISION` 並產出 collision report（內容契約見 §9.8），**不得合併**。（fail-closed 而非保留為不同 Trial：合併會誤配，保留兩個同鍵 Trial 會讓 URL 不唯一，硬失敗使月更新維持 last-known-good。）
+**碰撞的定義（v0.8 修訂）**：兩列的 `strip(raw protocol)` **不同**、而 `identityNormalize` 後**相同** → 硬失敗 `IDENTITY_COLLISION` 並產出 collision report（內容契約見 §9.8），**不得合併**。（fail-closed 而非保留為不同 Trial：合併會誤配，保留兩個同鍵 Trial 會讓 URL 不唯一，硬失敗使月更新維持 last-known-good。）
+
+**僅前後空白不同者不是碰撞，直接合併為同一 Trial**，兩個 raw 值都保留在 `protocolRaw[]`，並在 QA report 記 `WHITESPACE_ONLY_PROTOCOL_VARIANT` 警告。
+
+> **v0.7 的規則照字面是自相矛盾的，2026-09-21 首次連網實跑才顯形。** `identityNormalize` 的定義本身含 `strip()`，「不同 raw 正規化後相同即碰撞」等於要求正規化不准折疊任何東西——那樣正規化就沒有作用。實資料 18,736 列有 **4 組**僅尾隨一個空白的 protocol（`CYTB323J12201` 15 列 vs `CYTB323J12201 ` 2 列、`BIO89-100-131` 4/3、`RMC-6236-301` 2/1、`CGMH 2311280002` 1/2），照 v0.7 字面全部硬失敗，**管線在真實資料上一次都跑不完**。
+>
+> **v0.7 的「實測 0 個碰撞」是量錯了**：5,882 是 distinct **identity-normalized** 值的個數（扣掉空 protocol 一組），從未與 distinct **raw** 值（5,887）對照，於是「正規化把幾個 raw 折成一個」這件事在量測中根本不可見。§9.3.5 自己寫的 `trialCount: 5888` 反而是**合併後**的數字——規格的兩個實測數字本來就互相矛盾。
+>
+> 界線畫在 `strip` 而非「全部折疊」的理由：尾隨空白在任何識別碼體系都不承載語意，不可能用來區分兩個不同試驗；而大小寫與 NFKC 全形折疊**可能**（`abc-1` 與 `ABC-1` 未必同一個計畫書），故那兩類維持 fail-closed。§11 A7 的碰撞案例用的正是大小寫與全形，不受本修訂影響。
+>
+> 注意 §6.2.1 所列「多一個空格」指的是 **protocol 內部**的空格（`CGMH 2311280002` vs `CGMH2311280002`），`identityNormalize` 不壓內部空白，那仍是兩個 Trial 並成為 `nearDuplicateGroup`。兩者不可混為一談。
 
 `searchNormalize` 與 `identityNormalize` **各自獨立驗證，不得共用實作**。
 
@@ -247,8 +258,8 @@ Trial（在 trials-index.json 內）
   latestCohortCount      latestSourceDate 當日的 record 數；dateUnknown 時為全部 record 數
   recordCount            全部 record 數
   latestAmbiguous        latestCohortCount > 1 且呈現欄位（依 §6.4.2 比較鍵）有衝突時為 true
-  conflictFields[]       衝突的呈現欄位名，依 canonical 欄位順序
-  displayFields          見 §6.4.5
+  conflictFields[]       衝突的呈現欄位名（**全部 13 個**呈現欄位皆可入列），依 canonical 欄位順序
+  displayFields          見 §6.4.5。**只含 9 個卡片欄位，不含 4 個長文字欄位**
   searchShortLatest      見 §9.3.4
   shard                  shardKey
 ```
@@ -268,6 +279,12 @@ index 只留 `recordCount` 與 `latestCohortCount` 兩個計數；§9.3.6 的不
   "<呈現欄位名>": { "raw": "<string>", "typed": <見 §9.3.3>, "flags": ["<field-scoped 旗標>"] }
 }
 ```
+
+**`displayFields` 的鍵為 9 個卡片欄位**（v0.8 修訂）＝ 13 個呈現欄位扣除 `試驗目的`、`主要評估指標`、`納入條件`、`排除條件`。那四個長文字欄位**不在 Trial 層級輸出**，詳情頁一律逐 record 從 shard 取原文（§7.3 本來就要求逐 record 呈現，不呈現「收斂後的長文字」）。
+
+> **這是把 §6.4.4／§6.4.5 改成與 F3 一致，不是新決策。** F3 早已要求「初始 payload 的 schema **不含這些欄位鍵**」，而 v0.7 的 §6.4.5 卻說 `displayFields` 涵蓋全部 13 個呈現欄位——兩條直接衝突，實作照 §6.4.5 寫就必然違反 F3。2026-09-21 實測坐實了代價：照字面實作的 `trials-index` 是 **15,621 KiB gzip**，其中排除條件 39.6 MiB ＋ 納入條件 37.6 MiB ＋ 主要評估指標 6.9 MiB ＋ 試驗目的 5.9 MiB 佔 raw 位元組的 **92.6%**。移出後降為 1,611 KiB gzip／915 KiB brotli。
+>
+> 收斂語意**不受影響**：§6.4.2 的衝突判定、§6.4.3 的 `rawVariants` 仍對全部 13 個呈現欄位計算，`conflictFields` 仍可含長文字欄位。改變的只有「Trial 層級把哪些欄位序列化進 `trials-index`」。
 
 - `raw` 固定為 string（永不為 `null`；來源空值即空字串）。
 - `typed` 的型別與 nullability 依欄位，見 §9.3.3。
@@ -486,7 +503,7 @@ v0.3 曾同時要求「搜尋涵蓋全部歷史紀錄」「7 個可搜尋欄位�
 
 索引載入：`short`+`latest` 併入 `trials-index`（§9.3.4）不需額外載入；`all`+`latest` 載 `search-long-latest` 2,044 KiB；`short`+`all` 載 `search-short-all` 1,649 KiB；`all`+`all` 另加 `search-long-all` 5,389 KiB。
 
-**UI 硬性要求**（避免把預設縮小變成靜默漏報）：擴大 scope 的兩個控制項必須在搜尋結果區可見，不得藏在設定或選單深處；切換前顯示需下載的大小（取自 `manifest.files[*].gzipBytes`，**不得前端寫死**）；結果區持續顯示目前 scope；零結果時提示可擴大的 scope 與其大小；載入失敗則退回上一個 scope 並說明，不得靜默維持舊結果集。
+**UI 硬性要求**（避免把預設縮小變成靜默漏報）：擴大 scope 的兩個控制項必須在搜尋結果區可見，不得藏在設定或選單深處；切換前顯示需下載的大小（取自 `manifest.files[*].brotliBytes`，**不得前端寫死**）；結果區持續顯示目前 scope；零結果時提示可擴大的 scope 與其大小；載入失敗則退回上一個 scope 並說明，不得靜默維持舊結果集。
 
 ## 9. ETL、發布與輸出契約
 
@@ -630,17 +647,19 @@ v0.4 同時要求「每個非 manifest 檔案內含 `datasetVersion`」與「`da
   "recordCount": 18736,
   "bootstrap": false,
   "files": {
-    "trialsIndex":      { "path": "trials-index.<h>.json", "bytes": 0, "gzipBytes": 0 },
-    "stats":            { "path": "stats.<h>.json", "bytes": 0, "gzipBytes": 0 },
-    "searchShortAll":   { "path": "...", "bytes": 0, "gzipBytes": 0 },
-    "searchLongLatest": { "path": "...", "bytes": 0, "gzipBytes": 0 },
-    "searchLongAll":    { "path": "...", "bytes": 0, "gzipBytes": 0 },
+    "trialsIndex":      { "path": "trials-index.<h>.json", "bytes": 0, "gzipBytes": 0, "brotliBytes": 0 },
+    "stats":            { "path": "stats.<h>.json", "bytes": 0, "gzipBytes": 0, "brotliBytes": 0 },
+    "searchShortAll":   { "path": "...", "bytes": 0, "gzipBytes": 0, "brotliBytes": 0 },
+    "searchLongLatest": { "path": "...", "bytes": 0, "gzipBytes": 0, "brotliBytes": 0 },
+    "searchLongAll":    { "path": "...", "bytes": 0, "gzipBytes": 0, "brotliBytes": 0 },
     "recordShards":     { "<shard>": { "path": "records/<shard>.<h>.json", "bytes": 0, "gzipBytes": 0 } }
   }
 }
 ```
 
-`files[*].gzipBytes` 是 §8.5 的 UI 顯示下載大小的來源，**不得在前端寫死**。
+`files[*].brotliBytes` 是 §8.5 的 UI 顯示下載大小的來源，**不得在前端寫死**。**顯示 brotli 而非 gzip**（v0.8 修訂）：Cloudflare Pages 對 JSON 實際送 brotli，顯示 gzip 等於對使用者高報約 43%，而 §8.5 那個數字存在的唯一目的就是讓使用者在切換 scope 前知道要付多少。`gzipBytes` 保留供 CI 對照與無 brotli 的部署環境 fallback。
+
+**`brotliBytes` 只算 5 個 top-level 檔**（quality 11）。256 個 shard 不算：它們不在 §8.5 的 scope 切換器上、也不在 F1 的 Tier 0 內，而對全部 shard 跑 quality 11 會讓月更新多花數分鐘卻沒有任何讀者。
 
 **`trials-index.<h>.json`**：`{ "datasetVersion": "<16 hex>", "trials": [ /* §6.4.4 的 Trial，依 trialId 昇序 */ ] }`
 
@@ -884,7 +903,7 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 - **D4** 每個正式 filter 維度至少一組，另加同維度多選（OR）、跨維度組合（AND）、每個 bucket 的閉區間端點、`period` 的重疊語意邊界、重複 query param、未知 param、無效值。斷言結果 trialId 清單逐一相同且順序相同、**canonical URL 字串精確相等**、reload 後控制項狀態精確相等。
 - **D5** 以**封閉的 filter schema 與 DOM selector invariant** 為主 oracle：斷言 filter schema、DOM 控制項、URL parser、輸出 state 四處均不存在 trial-status 維度。列舉中文同義詞只作 mutation guard。
 - **D6** **每一個可篩選且可能衝突的欄位**各有一組 `latestAmbiguous` oracle，斷言該 trial 歸入「不一致」分組且**不出現**在任一具體值的篩選結果中。
-- **D7** scope 切換：四種組合各自的結果集、URL 的 `fields`／`history` 可重現、切換前顯示的大小取自 `manifest.files[*].gzipBytes`（**非前端寫死**）、scope 指示持續可見、零結果時提示可擴大的 scope、索引載入失敗時退回上一個 scope 並顯示說明。
+- **D7** scope 切換：四種組合各自的結果集、URL 的 `fields`／`history` 可重現、切換前顯示的大小取自 `manifest.files[*].brotliBytes`（**非前端寫死**）、scope 指示持續可見、零結果時提示可擴大的 scope、索引載入失敗時退回上一個 scope 並顯示說明。
 - **D8 `enroll` 的區間重疊** 一筆 `台灣預計受試者人數 = "20-40"` 須**同時**出現在 `11-30` 與 `31-100` 兩個 bucket 的篩選結果中，且卡片顯示 raw `20-40`（不得顯示為單一數字）。另斷言 `numericUnparsed`／`numericImplausible` 等歸「未提供」而**不進任何數值 bucket**。
 
 ### E. 呈現與誤導防範
@@ -903,15 +922,36 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 
 ### F. 效能（分層預算）
 
-- **F1** **Tier 0（預設 scope 的冷啟動）≤1.5 MB gzip**。定義為「冷啟動到**可搜尋 readiness**」的全部 network responses；readiness 以**功能性 probe** 判定（執行一個固定查詢並取得正確結果集才算就緒）。以 production build 與固定 gzip 設定量測，列出納入檔案清單與總和寫入 CI artifact。
+- **F1** **Tier 0（預設 scope 的冷啟動）≤1.5 MB，以實際傳輸編碼量測**。定義為「冷啟動到**可搜尋 readiness**」的全部 network responses；readiness 以**功能性 probe** 判定（執行一個固定查詢並取得正確結果集才算就緒）。以 production build 量測，列出納入檔案清單與總和寫入 CI artifact。
+  **量測編碼定案為 brotli（v0.8 修訂）**：部署在 Cloudflare Pages，對 `application/json` 實際送的是 brotli。v0.7 全程以 gzip 計，而同一份位元組兩者差約 43%（index 1,611 → 915 KiB）——**量一個使用者從來不會付的數字，正是 F1 自己警告的那種自我誤導**。CI 量測須取 response 的 `content-encoding` 與實收位元組，不得自行 gzip 再報。
   **口徑定案：1.5 MB 量的是「全部 network responses」，含 HTML、JS、CSS、字型與資料檔。** 這是使用者真正付的冷啟動成本；只量資料層會讓 CI 在真實冷啟動超標時仍顯示合格。
   **資料層子集合（封閉，須恰好等於這三個）**：`manifest.json` ＋ `trials-index.<h>.json` ＋ `stats.<h>.json`。三者都在冷啟動路徑上——首頁要顯示統計卡（E2）、篩選控制項的值域來自 `stats.json` 的 facet buckets（§9.3.5）。子集合另立斷言，**不取代**總和斷言。
   **readiness probe 不得早於這三個檔載入完成就判定就緒**——否則把必要的 response 排除在量測之外，等於自己放水。
-  **實測基線僅涵蓋 `trials-index`（含 `searchShortLatest`、不含 `recordIds`）1,236 KiB gzip**——它**不是** F1 的基線，只是資料子集合中最大的一項。`stats.json` 尚未量測（其大小主要由 `applicant` facet 的 distinct 值數決定，而該基數**從未量測**：PROGRESS.md 的欄位表是「差異欄位分布（按組數）」，不是 cardinality），前端 bundle 亦尚未存在。
-  **代價要寫明**：資料層已佔 1,236 KiB，只剩約 **264 KiB** 給 `stats.json` 加上整個前端 bundle。M1／M2 一量很可能超標。**超標時先報瓶頸歸因，不調鬆數字**（§10 把效能排在誤導與資料正確性之後——超標是要解的工程問題，不是安全問題；而「量了一個不是使用者成本的數字然後宣告合格」才是會誤導自己的那種錯）。
+  **Tier 0 實測（2026-09-21，18,736 列／5,888 Trial 的真實快照，§6.4.5 的 9 欄 `displayFields`）**：
+
+  | 檔案 | raw | gzip | brotli |
+  |---|---:|---:|---:|
+  | `trials-index.<h>.json` | 11,119.6 KiB | 1,611.0 KiB | 914.8 KiB |
+  | `stats.<h>.json` | 22.8 KiB | 4.5 KiB | 3.9 KiB |
+  | `manifest.json` | 28.7 KiB | 7.0 KiB | 5.4 KiB |
+  | **Tier 0 合計** | | **1,622.6 KiB** | **924.0 KiB** |
+
+  以 brotli 計餘 **612.0 KiB** 給 HTML／JS／CSS／字型；以 gzip 計則已超標 86.6 KiB。**這是量測編碼定案為 brotli 的直接後果，不是把門檻調鬆。**
+  `manifest.json` 有 256 個 shard 條目故達 28.7 KiB；它是唯一不帶內容雜湊、`Cache-Control: no-cache` 的檔，每次冷啟動都重取，因此必須計入 Tier 0。
+  **`stats.json` 的大小疑慮解除**：三個 facet 的實測 bucket 數為 `applicant` **371**、`phase` 7、`scale` 3；`unprovided` 為 109／109／187，`conflicted` 為 8／3／0，三者各自的 `buckets + unprovided + conflicted` 均**恰等於** `denominators.trials = 5888`（§9.3.6 I6 成立）。`applicant` 的 cardinality 是三者中唯一過百的，但 371 個字串 bucket 壓縮後整份 `stats.json` 僅 **4.6 KiB brotli**——v0.7「其大小主要由 applicant cardinality 決定」的擔憂在這個量級下不成立。
+  **超標時先報瓶頸歸因，不調鬆數字**（§10 把效能排在誤導與資料正確性之後——超標是要解的工程問題，不是安全問題；而「量了一個不是使用者成本的數字然後宣告合格」才是會誤導自己的那種錯）。
   **驗收須同時斷言兩件事**：(i) readiness 前的**全部 response** 的 gzip 總和 ≤ 1.5 MB，清單寫入 CI artifact；(ii) 其中的資料檔集合**恰好等於**上述三個。只做 (ii) 的量測器會漏掉 JS／CSS／字型。
-  > 門檻自 v0.4 的 1.0 MB 上調為 1.5 MB：原基線「715–900 KiB」是估算值，實測有誤。卡片資料本身即 903 KiB；`recordIds` 移入 shard 後省 299 KiB；**拆成獨立檔反而更大**（903+693=1,596 > 1,236），故不拆。
-- **F2** 各按需 tier 的實測 gzip 上限記錄於規格與 CI artifact（`all`+`latest` 2,044 KiB；`short`+`all` 1,649 KiB；`all`+`all` 另加 5,389 KiB），**不計入 F1**，超出記錄值 20% 須在 CI 告警。
+  > 門檻自 v0.4 的 1.0 MB 上調為 1.5 MB：原基線「715–900 KiB」是估算值，實測有誤。`recordIds` 移入 shard 後省 299 KiB；**拆成獨立檔反而更大**（903+693=1,596 > 1,236），故 `searchShortLatest` 不拆。
+  > **v0.7 的 1,236 KiB 基線本身也是估算值。** 2026-09-21 實測重建了這條線：9 欄 `displayFields` ＋ `searchShortLatest` 的 index 為 1,611 KiB gzip（v0.7 估 1,236）。估算偏低 23%，但不影響結論——瓶頸從來不是這 30% 的誤差，而是 v0.7 的 §6.4.5 把 4 個長文字欄位也放進 index（15,621 KiB，12.6 倍）。
+- **F2** 各按需 tier 的實測上限記錄於規格與 CI artifact，**不計入 F1**，超出記錄值 20% 須在 CI 告警。2026-09-21 實測（brotli，取自 `manifest.files[*].brotliBytes`）：
+
+  | scope | 檔案 | brotli | v0.5 的 gzip 估值 |
+  |---|---|---:|---:|
+  | `short`+`all` | `search-short-all` | 696.1 KiB | 1,649 KiB |
+  | `all`+`latest` | `search-long-latest` | 1,477.6 KiB | 2,044 KiB |
+  | `all`+`all` | ＋`search-long-all` | 1,840.7 KiB | 5,389 KiB |
+
+  三者全部低於 v0.5 的估值，`all`+`all` 更低了 66%——**估算一路偏保守，但偏的方向不一致**（F1 的 index 估值偏低 23%），所以估值一律不可當驗收基準。
 - **F3** 長文字隔離：在 `納入條件`／`排除條件`／`試驗目的`／`主要評估指標` 放**多筆分散的唯一 canary**（≥5 筆，跨不同 shard），斷言 Tier 0 的全部 response 與 bundle 均不含其**內容**，且**初始 payload 的 schema 不含這些欄位鍵**。
 - **F4** 以 production-scale fixture（5,888 Trial／18,736 SourceRecord）與固定查詢 corpus（零結果、極多結果、中文、英文、多詞、protocol）量測；計時自**輸入事件到結果 DOM 完成**；基準環境為 **GitHub Actions runner 類別 + 固定 CPU throttle 倍率**，固定樣本數，門檻 **p95 ≤300 ms**。規格明寫「跨時間比較僅在同 runner 類別內有效」。達不到須寫**瓶頸歸因**，不調鬆數字。
 
@@ -970,6 +1010,13 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 | 14 | **F1 的 1.5 MB 量的是全部 network responses**，三個資料檔只是須恰好相等的子集合 | §11 F1 | r4 2.2／F1，使用者定案 |
 
 ## 15. 修訂紀錄
+
+- **v0.8（2026-09-21）** **首次連網實跑觸發**，不是覆審觸發。前七版全部靠凍結 fixture 與 prose 覆審推進，M1 的 141 個測試全綠，而真實資料一跑就在第一道硬失敗停住。兩項修訂都是「規格內部本來就矛盾，只是沒有東西去碰它」：
+  - **§6.2 的碰撞定義限縮為「`strip(raw)` 不同而正規化後相同」**。v0.7 字面上把 `identityNormalize` 自己的 `strip()` 也算成碰撞，等於要求正規化不准折疊任何東西。實資料 4 組僅尾隨一個空白的 protocol 使管線 exit 22，**一次都跑不完**。v0.7 宣稱的「實測 0 碰撞」是量錯了——5,882 數的是 distinct **normalized** 值，從未與 5,887 個 distinct **raw** 對照，那個量法在定義上就看不見碰撞。§9.3.5 自己寫的 `trialCount: 5888` 是合併後的數字，規格的兩個實測數字本來就互相矛盾
+  - **§6.4.4／§6.4.5 的 `displayFields` 改為 9 個卡片欄位**，與早已存在的 **F3**（「初始 payload 的 schema 不含四個長文字欄位鍵」）一致。v0.7 的 §6.4.5 說涵蓋全部 13 欄——照 §6.4.5 寫就必然違反 F3，照 F3 寫就違反 §6.4.5，**兩條規範直接衝突而四輪覆審都沒抓到**。實測代價：照字面實作的 index 是 15,621 KiB gzip（F1 門檻的 10.2 倍），長文字佔 raw 位元組 92.6%
+  - **F1 的量測編碼定案為 brotli**，並補上 Tier 0 的實測表（923.7 KiB brotli，餘 612 KiB 給 bundle）。v0.7 全程以 gzip 計，但部署在 Cloudflare Pages 實際送 brotli——**量一個使用者從來不會付的數字，正是 F1 自己那段話警告的自我誤導**。同時把 §8.5／D7 的 UI 下載大小來源由 `gzipBytes` 改為 `brotliBytes`
+  - **`stats.json` 的 cardinality 疑慮解除**：`applicant` 實測 371 bucket、`phase` 7、`scale` 3，三者的 `buckets + unprovided + conflicted` 均恰等於 5,888，整份 4.6 KiB brotli
+  - **教訓**：凍結 fixture 證明的是「實作符合規格」，證明不了「規格符合現實」。v0.5 起反覆用 fixture 反驗規格找出 12 個 GAP，但 fixture 是照規格寫的，規格與真實資料的落差它結構上看不見。**新專案的第一次連網實跑要排在規格定案之後、實作完成之前**，不是排在最後當驗收。
 
 - **v0.7（2026-09-18）** 依 `plan-verdict-r4.md`（接受 9／部分接受 2／拒絕 0／Blocker 0）改寫。**本輪 11 項發現全部是 v0.6 修訂自己造的，沒有一項是 v0.5 遺留**——第四次應驗「修訂會製造新洞」。形狀一致：**為了關掉一個洞而引入的新概念，本身沒有被定義清楚。** 主要變更：
   - **§6.4.2 的比較鍵改以「合法 `(typed, flags)` 組合」索引**（15 列封閉表）。v0.6 寫的「涵蓋旗標封閉集合的每一個狀態」**那個等號是錯的**——旗標不互斥：`numericRange + numericOutOfRange` 是複合、`sourceZero` 是附加。照旗標逐一對應時，複合組合沒有唯一答案。新表明定第 9／10 列同鍵（超界只看 raw）、第 3 列與第 2 列同鍵（`sourceZero` 不影響比較）

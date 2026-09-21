@@ -7,6 +7,10 @@ license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.32",
+    # §9.3.5：manifest 的 brotliBytes 是 §8.5 顯示下載大小的來源，必須與
+    # Cloudflare Pages 實際送的編碼一致。缺套件時 build 直接失敗——退回 gzip
+    # 會讓欄位名仍叫 brotliBytes 卻報一個大 43% 的數字，比缺欄位更難發現。
+    "brotli>=1.1",
     # §6.5.1／H5：buildDate 必須以 Asia/Taipei 日曆日產生。Windows 與精簡 Linux 映像
     # 沒有系統 tz 資料庫，缺這個套件時 ZoneInfo 會拋——**那是對的**，不得軟性退回 UTC：
     # runner 是 UTC，台灣時間 08:00 前 UTC 仍是前一天，「未來日期」判定會差一天。
