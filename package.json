@@ -1,0 +1,21 @@
+{
+  "name": "taiwan-clinical-trial-radar",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "台灣藥品臨床試驗檢索站——TFDA dataset 205 的靜態檢索前端",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "vitest": "^3.2.4"
+  }
+}
