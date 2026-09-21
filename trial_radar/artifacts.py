@@ -38,6 +38,12 @@ FACETS: dict[str, str] = {
 #: 下載大小會系統性偏離使用者真正付的位元組——而那個數字存在的唯一目的就是告訴使用者成本。
 BROTLI_QUALITY = 11
 
+#: §9.3.5：帶 `brotliBytes` 的五個具名 top-level 條目。
+#: **`recordShards` 不在內**——它們不在 §8.5 的 scope 切換器上、也不在 F1 的 Tier 0 內。
+TOP_LEVEL_FILE_KEYS: tuple[str, ...] = (
+    "trialsIndex", "stats", "searchShortAll", "searchLongLatest", "searchLongAll",
+)
+
 
 def brotli_size(data: bytes) -> int:
     """壓縮後位元組數。
@@ -285,9 +291,6 @@ def build_artifacts(
 def manifest_paths(manifest: dict) -> set[str]:
     """`manifest.files` 列出的全部發布路徑。"""
     files = manifest["files"]
-    paths = {
-        files[k]["path"]
-        for k in ("trialsIndex", "stats", "searchShortAll", "searchLongLatest", "searchLongAll")
-    }
+    paths = {files[k]["path"] for k in TOP_LEVEL_FILE_KEYS}
     paths |= {v["path"] for v in files["recordShards"].values()}
     return paths

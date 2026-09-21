@@ -72,7 +72,9 @@ def build_quality_report(
         warnings.append(
             {
                 "code": "WHITESPACE_ONLY_PROTOCOL_VARIANT",
+                "trialId": group["trialId"],
                 "identityNormalized": group["identityNormalized"],
+                # 三個以上變體仍是**一則**，不展開成 pair
                 "rawProtocols": group["rawProtocols"],
             }
         )
@@ -201,4 +203,23 @@ def build_collision_report(detail: dict) -> dict:
     groups = detail.get("groups") or []
     if not groups:
         raise ValueError("collision report 不得為空（§9.8）")
+
+    # 結構在此**主動檢查**，不只是轉手。這份 report 只在事故當下被讀，
+    # 而那時沒有人有餘裕發現它少了一個欄位——形狀錯誤要在產生的當下就爆。
+    for g in groups:
+        if not {"identityNormalized", "trialId", "members"} <= set(g):
+            raise ValueError(f"collision group 缺欄位（§9.8）：{sorted(g)}")
+        members = g["members"]
+        if len(members) < 2:
+            raise ValueError(
+                f"collision group 至少 2 個 member，得到 {len(members)}（§9.8）"
+            )
+        stripped = [m["strippedRaw"] for m in members]
+        if len(set(stripped)) != len(stripped):
+            # 群內 strippedRaw 相同就不是碰撞而是 §6.2 的合併案例
+            raise ValueError(f"member 的 strippedRaw 須兩兩相異（§9.8）：{stripped}")
+        for m in members:
+            if not m.get("raws") or not m.get("fingerprints"):
+                raise ValueError(f"member 須帶 raws[] 與 fingerprints[]（§9.8）：{m}")
+
     return {"groups": groups, "groupCount": len(groups)}

@@ -15,10 +15,13 @@ from trial_radar.identity import (
     canonical_serialization,
     near_duplicate_groups,
     sha256hex,
+    trial_id,
 )
 from trial_radar.model import build_trials
 from trial_radar.normalize import identity_normalize, loose_key
 from trial_radar.parsing import suspected_test_row
+
+PROTOCOL = "臨床試驗計畫書編號"
 
 BUILD_KW = dict(
     build_date="2026-09-18",
@@ -296,22 +299,114 @@ def test_a6_record_id_ordinal_always_present(trials):
 # ---------------------------------------------------------------- A7
 
 def test_a7_identity_collision_hard_fails(a7_rows, build_date, a7_oracle):
-    """A7：不同 raw protocol 正規化後相同 → 硬失敗，且 collision report 須能唯一定位。
+    """A7：`strip(raw)` 相異而正規化後相同 → 硬失敗，collision report 須能唯一定位。
 
     **空 report 或只含 error code 者視為不合規**（§9.8）。
     """
+    rows = list(a7_rows.values())
     with pytest.raises(PipelineError) as exc:
-        build_trials(list(a7_rows.values()), build_date)
+        build_trials(rows, build_date)
     err = exc.value
     assert err.code is ErrorCode.IDENTITY_COLLISION
     assert err.layer.value == "content"
 
     groups = err.detail["groups"]
     assert groups, "空 collision report 必須使測試失敗"
+
+    # 由 fixture 自己推導期望的 group／member 結構，**不抄實作的輸出**
+    expected: dict[str, dict[str, set[str]]] = {}
+    for r in rows:
+        raw = r[PROTOCOL]
+        ident = identity_normalize(raw)
+        if ident:
+            expected.setdefault(ident, {}).setdefault(raw.strip(), set()).add(raw)
+    expected = {k: v for k, v in expected.items() if len(v) > 1}
+    assert expected, "A7 fixture 必須真的含碰撞，否則這條測不到東西"
+
+    assert {g["identityNormalized"] for g in groups} == set(expected)
+
     for g in groups:
-        assert g["identityNormalized"]
-        assert len(g["rawProtocols"]) >= 2
-        assert len(set(g["rawProtocols"])) == len(g["rawProtocols"])
+        ident = g["identityNormalized"]
+        # §9.8：trialId 由 identity key 導出，群內共用；**不可用來區分 member**
+        assert g["trialId"] == trial_id(f"P:{ident}")
+
+        members = g["members"]
+        assert len(members) >= 2
+        stripped = [m["strippedRaw"] for m in members]
+        assert stripped == sorted(stripped), "members 依 strippedRaw 昇序"
+        # **配對關係精確相等**，不是「欄位存在且非空」
+        assert {m["strippedRaw"]: set(m["raws"]) for m in members} == expected[ident]
+
+        for m in members:
+            assert m["fingerprints"], "每個 member 須能回指來源列"
+            assert m["fingerprints"] == sorted(m["fingerprints"])
+            assert all(len(f) == 64 for f in m["fingerprints"])
+            # strippedRaw 是判定成立的依據本身，必須與 raws 自洽
+            assert {x.strip() for x in m["raws"]} == {m["strippedRaw"]}
+
+
+def test_a7_whitespace_only_is_not_a_collision(a7_rows, build_date):
+    """A7 的必含反例：僅前後空白不同者**不得**觸發 `IDENTITY_COLLISION`（§6.2）。
+
+    這條與 `test_a_whitespace_merge.py` 同源，但放在 A7 這一側：**A7 的正例矩陣若被
+    寫成「任何折疊都算碰撞」，這條會紅**——它守的是界線本身，不是合併結果。
+    """
+    rows = [dict(r) for r in a7_rows.values()]
+    donor = next(r for r in rows if identity_normalize(r[PROTOCOL])
+                 and r[PROTOCOL] == r[PROTOCOL].strip())
+
+    def members_of(rs):
+        with pytest.raises(PipelineError) as exc:
+            build_trials(rs, build_date)
+        g = next(g for g in exc.value.detail["groups"]
+                 if g["identityNormalized"] == identity_normalize(donor[PROTOCOL]))
+        return {m["strippedRaw"]: set(m["raws"]) for m in g["members"]}
+
+    # a7 fixture 的 donor 本來就與另一個大小寫變體碰撞，**那個群是合法的**。
+    # 要斷言的不是「群不存在」，而是**空白變體不得新增 member**。
+    before = members_of(rows)
+
+    variants = []
+    for suffix, tag in ((" ", "TRAIL"), ("　", "IDEO"), (" ", "NBSP")):
+        v = dict(donor)
+        v[PROTOCOL] = donor[PROTOCOL] + suffix
+        v["TFDA收文號"] = f"A7-WS-{tag}"
+        rows.append(v)
+        variants.append(v[PROTOCOL])
+
+    after = members_of(rows)
+
+    assert set(after) == set(before), (
+        f"僅前後空白不同不得新增 member：{sorted(set(after) - set(before))}"
+    )
+    key = donor[PROTOCOL].strip()
+    assert after[key] == before[key] | set(variants), (
+        "三個空白變體須全部折進 donor 所屬的那一個 member"
+    )
+
+
+def test_a7_zero_width_is_a_collision(a7_rows, build_date):
+    """§6.0 strip 字元集合的**反向哨兵**：零寬字元不被 strip，故必須判為碰撞。
+
+    把 strip 實作成「移除全部不可見字元」會讓這條轉綠——而那會讓兩個肉眼無法區分的
+    計畫書編號被靜默合併成一個，正是 fail-closed 要擋的。
+    """
+    rows = [dict(r) for r in a7_rows.values()]
+    donor = next(r for r in rows if identity_normalize(r[PROTOCOL])
+                 and r[PROTOCOL] == r[PROTOCOL].strip())
+    variant = dict(donor)
+    variant[PROTOCOL] = donor[PROTOCOL] + "​"
+    variant["TFDA收文號"] = "A7-ZWSP"
+    rows.append(variant)
+
+    with pytest.raises(PipelineError) as exc:
+        build_trials(rows, build_date)
+    groups = {g["identityNormalized"]: g for g in exc.value.detail["groups"]}
+    # NFKC 不移除 U+200B，故正規化後的鍵含該字元；碰撞群以該鍵成立
+    target = identity_normalize(donor[PROTOCOL] + "​")
+    assert target in groups or identity_normalize(donor[PROTOCOL]) in groups, (
+        "零寬字元差異必須產生碰撞群"
+    )
 
 
 # ---------------------------------------------------------------- A8

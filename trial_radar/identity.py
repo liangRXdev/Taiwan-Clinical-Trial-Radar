@@ -124,26 +124,51 @@ def detect_identity_collision(rows: list[dict[str, str]], keys: list[IdentityKey
     用來區分兩個不同試驗；大小寫與 NFKC 全形折疊則**可能**（`abc-1` 與 `ABC-1` 未必
     同一個計畫書），那兩類維持硬失敗。
     """
-    by_key: dict[str, set[str]] = {}
-    for row, key in zip(rows, keys):
+    # 先只分組。fingerprint 要算 canonical serialization，成本不低而絕大多數執行不會碰撞，
+    # 所以**延到確定有碰撞群之後才算**，且只算該群的列。
+    by_key: dict[str, dict[str, list[int]]] = {}
+    for i, (row, key) in enumerate(zip(rows, keys)):
         if key.kind != "P":
             continue
-        by_key.setdefault(key.value, set()).add(row[PROTOCOL].strip())
+        by_key.setdefault(key.value, {}).setdefault(row[PROTOCOL].strip(), []).append(i)
 
-    groups = [
-        {
-            "identityNormalized": k,
-            "rawProtocols": sorted(raws),
-        }
-        for k, raws in by_key.items()
-        if len(raws) > 1
-    ]
-    if groups:
-        raise PipelineError(
-            ErrorCode.IDENTITY_COLLISION,
-            f"{len(groups)} 個 identity 正規化碰撞群",
-            {"groups": groups},
+    colliding = {k: v for k, v in by_key.items() if len(v) > 1}
+    if not colliding:
+        return
+
+    # §9.8 兩層結構：group → members。**`trialId` 不可用來區分 member**——碰撞成員共用
+    # 同一個 identity key，而 trialId 由 identity key 導出，因此群內必然相同。
+    # `strippedRaw` 必須寫出：它是判定成立的依據本身，少了它看 report 的人無法分辨
+    # 這是真碰撞還是實作漏了 §6.2 的 strip 而誤報。
+    groups = []
+    for ident, by_stripped in sorted(colliding.items()):
+        members = []
+        for stripped, idxs in sorted(by_stripped.items()):
+            # **固定為陣列**：一個 member 可以對應多個 raw（`"ABC "` 與 `" ABC"` 的
+            # strip 相同卻是同一個 member），型別時而字串時而陣列會讓讀 report 的人
+            # 與 schema validator 各自猜一種。
+            members.append(
+                {
+                    "raws": sorted({rows[i][PROTOCOL] for i in idxs}),
+                    "strippedRaw": stripped,
+                    "fingerprints": sorted(
+                        {sha256hex(canonical_serialization(rows[i])) for i in idxs}
+                    ),
+                }
+            )
+        groups.append(
+            {
+                "identityNormalized": ident,
+                "trialId": trial_id(IdentityKey("P", ident).render()),
+                "members": members,
+            }
         )
+
+    raise PipelineError(
+        ErrorCode.IDENTITY_COLLISION,
+        f"{len(groups)} 個 identity 正規化碰撞群",
+        {"groups": groups},
+    )
 
 
 def whitespace_only_variants(rows: list[dict[str, str]]) -> list[dict[str, object]]:
@@ -160,7 +185,13 @@ def whitespace_only_variants(rows: list[dict[str, str]]) -> list[dict[str, objec
             continue
         by_norm.setdefault(norm, set()).add(raw)
     return [
-        {"identityNormalized": k, "rawProtocols": sorted(v)}
+        {
+            "identityNormalized": k,
+            # §6.2：**以 Trial 為單位，一個 Trial 最多一則**，故帶 trialId。
+            # 它由 identity key 導出，不需要先建出 Trial 就能算。
+            "trialId": trial_id(IdentityKey("P", k).render()),
+            "rawProtocols": sorted(v),
+        }
         for k, v in sorted(by_norm.items())
         if len(v) > 1
     ]

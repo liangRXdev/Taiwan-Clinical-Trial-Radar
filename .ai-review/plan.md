@@ -871,13 +871,15 @@ groups[]
   identityNormalized   該群共用的 identity key 值
   trialId              該群共用的 trialId（見下方警語）
   members[]            **≥2 筆**，依 strippedRaw 碼點昇序
-    raw                來源欄位的原始值（未經任何處理）
+    raws[]             對應到該 strippedRaw 的全部原始值（未經任何處理），昇序
     strippedRaw        strip(raw)；群內**兩兩相異**，這正是碰撞的定義
-    fingerprints[]     產生該 raw 的全部來源列 fingerprint，昇序
+    fingerprints[]     產生這些 raw 的全部來源列 fingerprint（canonical serialization 的
+                       sha256hex，見 §11 A5），昇序
 ```
 
 > **`trialId` 不可用來區分 member。** 碰撞的成員共用同一個 identity key，而 `trialId = "t" + sha256hex(identityKey)[:16]`——**它們的 trialId 必然相同**。v0.8 以前的契約寫「各自的來源 fingerprint 與 trialId」，照字面實作出來的 report 在事故當下無法回答「是哪一筆來源列造成的」，而那是這份 report 存在的唯一理由。
 > `strippedRaw` 必須寫進 report：它是**判定成立的依據本身**。少了它，看 report 的人無法分辨這是真碰撞，還是實作漏了 §6.2 的 strip 而誤報。
+> **`raws[]` 固定為陣列**：一個 member 可以對應多個原始值（`"ABC "` 與 `" ABC"` 的 `strip` 相同，屬**同一個** member），型別時而字串時而陣列會讓讀 report 的人與 schema validator 各自猜一種。
 
 ## 10. 風險權重與免責
 

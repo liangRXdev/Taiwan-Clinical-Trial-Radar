@@ -11,12 +11,14 @@
 from __future__ import annotations
 
 import copy
+import gzip
 import json
 
 import pytest
 
 from trial_radar.artifacts import (
     artifact_digest,
+    brotli_size,
     build_artifacts,
     canonical_json_bytes,
     dataset_version,
@@ -58,8 +60,18 @@ def _republish(logical: dict) -> tuple[dict[str, bytes], dict]:
         h = sha256hex(canonical_json_bytes(payload))[:16]
         stem, ext = name.rsplit(".", 1)
         path = f"{stem}.{h}.{ext}"
-        published[path] = canonical_json_bytes({**payload, "datasetVersion": dv})
-        meta[name] = {"path": path, "bytes": 0, "gzipBytes": 0}
+        data = canonical_json_bytes({**payload, "datasetVersion": dv})
+        published[path] = data
+        # **大小 metadata 必須算對**（v0.9）：留 0 會讓每一個 B6 反例同時違反 I8，
+        # 而 B6 要求的是「各自獨立反例」——一個順便打翻另一條不變量的反例，
+        # 證明不了那條不變量抓得到它自己該抓的東西。
+        meta[name] = {
+            "path": path,
+            "bytes": len(data),
+            "gzipBytes": len(gzip.compress(data, mtime=0)),
+        }
+        if not name.startswith("records/"):
+            meta[name]["brotliBytes"] = brotli_size(data)
     manifest = {
         "datasetVersion": dv,
         "artifactDigest": artifact_digest(published),
@@ -249,10 +261,69 @@ def test_b6_unevaluable_is_not_pass(out):
     assert rep.unevaluable, "須明確記錄哪一條因為什麼前置條件而無法評估"
 
 
+# ------------------------------------------------- I8：只動 manifest 數值的反例
+
+def _mm_bytes(manifest):
+    manifest["files"]["trialsIndex"]["bytes"] += 1
+
+
+def _mm_gzip(manifest):
+    manifest["files"]["stats"]["gzipBytes"] += 1
+
+
+def _mm_brotli(manifest):
+    manifest["files"]["searchLongAll"]["brotliBytes"] = 1
+
+
+def _mm_shard_has_brotli(manifest):
+    name = next(iter(manifest["files"]["recordShards"]))
+    manifest["files"]["recordShards"][name]["brotliBytes"] = 123
+
+
+I8_CASES = [
+    ("bytes 被竄改", _mm_bytes, {"I8.bytes"}),
+    ("gzipBytes 被竄改", _mm_gzip, {"I8.gzipBytes"}),
+    ("brotliBytes 被竄改", _mm_brotli, {"I8.brotliBytes"}),
+    ("shard 多了 brotliBytes", _mm_shard_has_brotli, {"I8.shardNoBrotli"}),
+]
+
+
+@pytest.mark.parametrize("label,mutate,expected", I8_CASES, ids=[c[0] for c in I8_CASES])
+def test_b6_size_metadata_counterexamples(out, label, mutate, expected):
+    """I8：**檔案內容完全不變，只竄改 manifest 的大小數值**。
+
+    這四個 mutation 不會改變 `datasetVersion` 也不會改變 `artifactDigest`——兩者都
+    **不含 `manifest.json` 自身**（§9.3.2）。所以在 I8 之前，整類竄改在測試上完全隱形，
+    而 §8.5 的 UI 與 F2 的基線都讀這些數字：**manifest 說多少，兩邊就都相信多少。**
+    """
+    manifest = copy.deepcopy(out.manifest)
+    mutate(manifest)
+
+    rep = check_invariants(out.published, manifest)
+    assert rep.violated == expected, label
+    # 反向證明「在 I8 之前這類竄改是隱形的」：兩個 digest 都沒被驚動
+    assert not (rep.violated & {"I2", "I7.datasetVersion", "I7.artifactDigest"})
+    assert artifact_digest(out.published) == manifest["artifactDigest"]
+
+    with pytest.raises(PipelineError) as exc:
+        assert_invariants(out.published, manifest)
+    assert exc.value.code is ErrorCode.INTEGRITY_DIGEST
+
+
+def test_b6_size_metadata_is_not_trivially_violated(out):
+    """反向哨兵：未竄改的 manifest 不得有任何 I8 違規。
+
+    沒有這條，一個「恆報 I8 違規」的驗證器會讓上面四條全綠。
+    """
+    rep = check_invariants(out.published, out.manifest)
+    assert not any(v.startswith("I8") for v in rep.violated)
+    assert not any(k.startswith("I8") for k in rep.unevaluable)
+
+
 def test_b6_mutation_inventory_reconciles_with_spec(out):
-    """B6(d)：mutation inventory 與 §9.3.6 的 I1–I7 **雙向對帳**。"""
+    """B6(d)：mutation inventory 與 §9.3.6 的 I1–I8 **雙向對帳**。"""
     covered = set()
-    for _, _, expected in B6_CASES:
+    for _, _, expected in B6_CASES + I8_CASES:
         covered |= expected
     covered |= {"I1", "I2", "I7.datasetVersion", "I7.artifactDigest"}  # 由其他測試涵蓋
 
@@ -266,13 +337,22 @@ def test_b6_mutation_inventory_reconciles_with_spec(out):
 
 def test_b7_cross_version_binding(out):
     """B7：manifest 為新版但某 shard 為舊 `datasetVersion` → fail-closed。"""
-    shard_path = next(iter(out.manifest["files"]["recordShards"].values()))["path"]
+    shard_name, shard_meta = next(iter(out.manifest["files"]["recordShards"].items()))
+    shard_path = shard_meta["path"]
     stale = dict(out.published)
     obj = json.loads(stale[shard_path].decode())
     obj["datasetVersion"] = "0" * 16
     stale[shard_path] = canonical_json_bytes(obj)
 
-    rep = check_invariants(stale, out.manifest)
+    # manifest 的大小 metadata 同步成舊檔的（v0.9）：真實情境是「瀏覽器拿到新 manifest
+    # 卻用了快取裡的舊 shard」，而此處要隔離的是**跨檔版本綁定**。不同步的話 I8 也會
+    # 跟著紅，這條就變成同時測兩件事——B6 的「各自獨立反例」正是在防這個。
+    manifest = copy.deepcopy(out.manifest)
+    entry = manifest["files"]["recordShards"][shard_name]
+    entry["bytes"] = len(stale[shard_path])
+    entry["gzipBytes"] = len(gzip.compress(stale[shard_path], mtime=0))
+
+    rep = check_invariants(stale, manifest)
     assert rep.violated == {"I2", "I7.artifactDigest"}
     # I7.datasetVersion **不觸發**：移除版本欄位後的 logical payload 沒變。
     # 兩者是不同的不變量，把它們併成一條就驗不到這個區別。

@@ -15,7 +15,15 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field as _dc_field
 
-from .artifacts import FACETS, canonical_json_bytes, dataset_version, artifact_digest, manifest_paths
+from .artifacts import (
+    FACETS,
+    TOP_LEVEL_FILE_KEYS,
+    artifact_digest,
+    brotli_size,
+    canonical_json_bytes,
+    dataset_version,
+    manifest_paths,
+)
 from .errors import ErrorCode, PipelineError
 
 # 子編號用於區分同一條不變量的不同違反形狀。
@@ -35,6 +43,10 @@ INVARIANTS: dict[str, str] = {
     "I6": "stats 的 facet bucket 計數 == 依 trials-index 重算的結果",
     "I7.datasetVersion": "datasetVersion 可由 logical payload 重算",
     "I7.artifactDigest": "artifactDigest 可由 manifest.files 的最終位元組重算",
+    "I8.bytes": "每個 files 條目的 bytes == 該檔實際位元組長度",
+    "I8.gzipBytes": "每個 files 條目的 gzipBytes == 對該位元組的 gzip 長度",
+    "I8.brotliBytes": "五個具名 top-level 條目的 brotliBytes == 對該位元組的 brotli q11 長度",
+    "I8.shardNoBrotli": "recordShards 條目不得有 brotliBytes",
 }
 
 SPEC_INVARIANTS: dict[str, list[str]] = {
@@ -45,6 +57,7 @@ SPEC_INVARIANTS: dict[str, list[str]] = {
     "I5": ["I5.trials", "I5.records", "I5.cohort"],
     "I6": ["I6"],
     "I7": ["I7.datasetVersion", "I7.artifactDigest"],
+    "I8": ["I8.bytes", "I8.gzipBytes", "I8.brotliBytes", "I8.shardNoBrotli"],
 }
 
 
@@ -204,7 +217,50 @@ def check_invariants(on_disk: dict[str, bytes], manifest: dict) -> InvariantRepo
                 != stats["denominators"]["trials"]
             ):
                 rep.violated.add("I6")
+
+    _check_size_metadata(on_disk, manifest, rep)
     return rep
+
+
+def _check_size_metadata(on_disk: dict[str, bytes], manifest: dict,
+                        rep: InvariantReport) -> None:
+    """I8：大小 metadata 可獨立重算（§9.3.6）。
+
+    **這是唯一打斷循環自證的地方。** `datasetVersion` 與 `artifactDigest` 都**不含
+    `manifest.json` 自身**（§9.3.2），所以把 `brotliBytes` 改成任意數字不會讓 I7、
+    H2、H3 轉紅；而 §8.5 的 UI 與 F2 的基線都讀這個值——manifest 說多少，兩邊就都
+    相信多少。前置條件因此刻意只有「該檔可讀」，不依賴 I1～I7。
+    """
+    import gzip
+
+    files = manifest["files"]
+    named = {k: files[k] for k in TOP_LEVEL_FILE_KEYS if k in files}
+
+    for key, meta in named.items():
+        data = on_disk.get(meta["path"])
+        if data is None:
+            rep.unevaluable.setdefault("I8.bytes", f"{key} 的檔案不可讀")
+            continue
+        if meta.get("bytes") != len(data):
+            rep.violated.add("I8.bytes")
+        if meta.get("gzipBytes") != len(gzip.compress(data, mtime=0)):
+            rep.violated.add("I8.gzipBytes")
+        if meta.get("brotliBytes") != brotli_size(data):
+            rep.violated.add("I8.brotliBytes")
+
+    for name, meta in files.get("recordShards", {}).items():
+        data = on_disk.get(meta["path"])
+        # **shard 不得有 brotliBytes**：多出這個欄位代表實作偷偷對 256 個 shard 跑了
+        # quality 11（月更新多花數分鐘卻沒有讀者），或把某個別處的數字複製了過來。
+        if "brotliBytes" in meta:
+            rep.violated.add("I8.shardNoBrotli")
+        if data is None:
+            rep.unevaluable.setdefault("I8.bytes", f"shard {name} 不可讀")
+            continue
+        if meta.get("bytes") != len(data):
+            rep.violated.add("I8.bytes")
+        if meta.get("gzipBytes") != len(gzip.compress(data, mtime=0)):
+            rep.violated.add("I8.gzipBytes")
 
 
 def assert_invariants(on_disk: dict[str, bytes], manifest: dict) -> InvariantReport:

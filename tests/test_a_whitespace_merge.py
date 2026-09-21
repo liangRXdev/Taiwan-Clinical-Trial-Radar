@@ -113,3 +113,103 @@ def test_no_whitespace_variants_in_unmodified_fixture(a_core_rows):
     """
     rows = [dict(r) for r in a_core_rows.values()]
     assert whitespace_only_variants(rows) == []
+
+
+# ---------------------------------------------------------------- QA report 形狀
+
+def test_whitespace_warning_shape(a_core_rows, build_date):
+    """§6.2：**以 Trial 為單位，一個 Trial 最多一則**，且須帶 `trialId`。
+
+    少了 `trialId`，看 QA report 的人要自己從 `identityNormalized` 反推 Trial——
+    而那正是這則 warning 想省掉的事。
+    """
+    from trial_radar.identity import trial_id
+    from trial_radar.qa import build_quality_report
+    from trial_radar.source import DropVerdict
+
+    rows, protocol = _rows_with_trailing_space(a_core_rows)
+    trials = build_trials(rows, build_date)
+    report = build_quality_report(
+        trials,
+        source_row_count=len(rows),
+        source_sha256="0" * 64,
+        fetched_at="2026-09-21T00:00:00Z",
+        drop=DropVerdict(None, False, True),
+        near_duplicates={},
+        whitespace_variants=whitespace_only_variants(rows),
+    )
+
+    ws = [w for w in report["warnings"] if w["code"] == "WHITESPACE_ONLY_PROTOCOL_VARIANT"]
+    assert len(ws) == 1, "一個 Trial 一則，不得展開成 pair"
+    assert ws[0]["trialId"] == trial_id(f"P:{identity_normalize(protocol)}")
+    assert ws[0]["identityNormalized"] == identity_normalize(protocol)
+    assert ws[0]["rawProtocols"] == sorted({protocol, protocol + " "})
+
+
+def test_three_variants_still_one_warning(a_core_rows, build_date):
+    """三個以上變體仍是**一則**，全部列在同一個 `rawProtocols`（§6.2 基數封存）。"""
+    rows = [dict(r) for r in a_core_rows.values()]
+    donor = next(
+        r for r in rows
+        if identity_normalize(r[PROTOCOL]) and r[PROTOCOL] == r[PROTOCOL].strip()
+    )
+    expected = {donor[PROTOCOL]}
+    for i, suffix in enumerate((" ", "　", " ")):
+        v = dict(donor)
+        v[PROTOCOL] = donor[PROTOCOL] + suffix
+        v["TFDA收文號"] = f"WS-MULTI-{i}"
+        rows.append(v)
+        expected.add(v[PROTOCOL])
+
+    groups = whitespace_only_variants(rows)
+    assert len(groups) == 1
+    assert set(groups[0]["rawProtocols"]) == expected
+    # 四個寫法收斂成一個 Trial
+    trials = build_trials(rows, build_date)
+    merged = [t for t in trials if identity_normalize(donor[PROTOCOL])
+              in {identity_normalize(p) for p in t.protocol_raw}]
+    assert len(merged) == 1
+    assert set(merged[0].protocol_raw) == expected
+
+
+def test_collision_report_rejects_v08_flat_shape():
+    """`build_collision_report` 主動檢查 §9.8 的結構，不只是轉手。
+
+    這份 report 只在事故當下被讀，那時沒有人有餘裕發現它少了一個欄位——
+    **形狀錯誤要在產生的當下就爆**。
+    """
+    import pytest as _pytest
+
+    from trial_radar.qa import build_collision_report
+
+    with _pytest.raises(ValueError):
+        build_collision_report({"groups": []})
+    # v0.8 的扁平形狀
+    with _pytest.raises(ValueError):
+        build_collision_report(
+            {"groups": [{"identityNormalized": "ABC", "rawProtocols": ["abc", "ABC"]}]}
+        )
+    # member 只有一個 → 不成群
+    with _pytest.raises(ValueError):
+        build_collision_report({"groups": [{
+            "identityNormalized": "ABC", "trialId": "t0",
+            "members": [{"raws": ["abc"], "strippedRaw": "abc", "fingerprints": ["f"]}],
+        }]})
+    # 群內 strippedRaw 相同 → 那是 §6.2 的合併案例，不是碰撞
+    with _pytest.raises(ValueError):
+        build_collision_report({"groups": [{
+            "identityNormalized": "ABC", "trialId": "t0",
+            "members": [
+                {"raws": ["abc"], "strippedRaw": "abc", "fingerprints": ["f"]},
+                {"raws": ["abc "], "strippedRaw": "abc", "fingerprints": ["g"]},
+            ],
+        }]})
+
+    ok = build_collision_report({"groups": [{
+        "identityNormalized": "ABC", "trialId": "t0",
+        "members": [
+            {"raws": ["abc"], "strippedRaw": "abc", "fingerprints": ["f"]},
+            {"raws": ["ABC"], "strippedRaw": "ABC", "fingerprints": ["g"]},
+        ],
+    }]})
+    assert ok["groupCount"] == 1
