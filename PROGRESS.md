@@ -968,3 +968,67 @@ bundle 只吃掉 0.7% 的預算。**仍是估算值**，F1 判定要等對真實
 2. 加入 `pharmacy-portal` 的 `tools.json` 與首頁
 3. 跑 `/codex-review`，以 plan.md 的 A1–H5 做規格符合度稽核
 4. **獨立案**：`trials-index` 減肥或改分片（F1 餘裕只有 3.2%）
+
+---
+
+## 2026-09-22（傍晚）— M4 收尾與規格符合度稽核
+
+### 做了什麼
+
+| 項目 | 結果 |
+|---|---|
+| README | 改「已上線」，修掉兩處過時的 payload 數字（gzip 口徑、v0.3 的索引大小） |
+| pharmacy-portal | `gov` 分類第 7 個工具，線上已驗（21 個工具） |
+| `CLAUDE.md` | 從 M0.5／v0.7 更新到現況，修掉三處現況宣稱的舊數字 |
+| `/codex-review` | A1–H5 逐條稽核：**符合 10／弱化 42／缺測 1／未實作 1** |
+| 必修 | **五項全部修畢**，pytest 246／vitest 226／Playwright 74 |
+
+### 稽核抓到什麼（為什麼這一步不能省）
+
+規格審查只看規格，程式碼審查只看程式碼，**沒有人比對兩者**。這一輪抓到三個
+會讓使用者看到錯誤資訊的問題，全部逃過了先前的五輪規格覆審與全綠的測試：
+
+1. **§7.2 命中日期標錯**：`fromOlder` 分支顯示 `trial.latestSourceDate`，
+   而該分支的前提正是「命中不在最新 cohort 內」——保證顯示一個不屬於該紀錄的日期。
+   **`render.test.ts` 把這個錯誤值寫成 expected**，是鎖住了它而不是沒抓到。
+2. **§8.5 scope 沒有真的退回**：`onNavigate` 丟棄回傳值，`results()` 疊代整個
+   cache，使用者拿到以部分索引產生的結果集。對應 e2e 只驗一句寫死的錯誤字串。
+3. **`?protocol=` 半套實作**：有 parse／build 而 `app.ts` 從不讀 `state.protocol`。
+   URL 收下然後靜默忽略——**比不支援更糟**。
+
+另兩項是 gate 缺口：`measure-f1-live.mjs` 寫好卻沒被任何 workflow 呼叫
+（F1 的四條量測邊界在 gate 層級一條都沒被強制）、F2 完全未實作。
+
+### 修法要點
+
+- 命中日期：`Hit` 加 `date`，由搜尋索引的 `d` 帶出；多筆日期**全部列出**（去重昇序），
+  與同日衝突「不替使用者挑」同一個原則
+- scope：`results()` 改讀 `filesFor(目前 scope)`；失敗還原 state ＋ `replaceState`；
+  cache 保留但不再被 `results()` 讀到
+- `?protocol=`：新 `src/lib/protocol.ts`，`rejected`（值不是編號）與 `notFound`
+  （本站沒有，須明說不代表該試驗不存在）**分開**，合併會讓前者被讀成後者
+- F1：接進 `deploy.yml` 部署後步驟並產 artifact；去重改為記次數計入
+- F2：`payload-baseline.json` 以**檔案為單位**，超 20% **告警不失敗**
+
+### 部署鏈實跑驗證
+
+```
+payload gate（估算）   TOTAL    958,177  （門檻 1,500,000）
+F1（真實部署）        1,452,124  TOTAL（門檻 1500000，餘 47876）→ 合格
+```
+
+### 三個過程中的教訓
+
+- **`npm run build` 靜默失敗會讓 sentinel 假綠**：第一次驗 scope rollback 的哨兵沒轉紅，
+  原因是 tsc 拒絕了我注入的 `if (false && ...)`，測試跑到舊 build。哨兵本身也要驗它有生效。
+- **E1 的封閉清單如設計般擋下新文案**：新增兩句 `?protocol=` 的錯誤訊息時，
+  「每一句狀態陳述都登記了概念」立刻轉紅。
+- **測試打臉了我自己寫的註解**：我在測試裡宣稱「JS 的 `\w` 會把中文算進去」，
+  斷言當場失敗——`\w` 預設就是 ASCII-only，會判反的是 Unicode 屬性類別與
+  Python 的 `isalnum()`。可算的東西不能憑印象寫。
+
+### 下一步（都不阻擋上線）
+
+1. Medium／Low 四項：E7 候選值只掃原形、C5 十五列只驗非空 tuple、E2 的 selector oracle、A1 的 `<=`
+2. Codex 54 條判定中**還有 43 條未逐行覆核**
+3. **獨立案**：`trials-index` 減肥或改分片（F1 餘裕僅 3.2%，它佔 98%）

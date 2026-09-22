@@ -5,10 +5,11 @@
 - 站台 <https://taiwan-clinical-trial-radar.pages.dev>（Cloudflare Pages，Direct Upload）
 - repo <https://github.com/liangRXdev/Taiwan-Clinical-Trial-Radar>（public，2026-09-22 建立）
 - 已發布 `datasetVersion=ef785e7addff8596`：5,888 Trial／18,736 列，`sourceUpdatedAt=2026-08-17`
-- **測試**：pytest 243、vitest 211、Playwright 69（fixture）＋ F4 兩條需 production 資料、fixture 自檢 289 條斷言
-- **F1 合格**：對真實部署實測 1,451,752 bytes／門檻 1,500,000（詳見 M3 一節）
+- **測試**：pytest 246、vitest 226、Playwright 74（fixture）＋ F4 兩條需 production 資料、fixture 自檢 289 條斷言
+- **F1 合格**：對真實部署實測 1,452,124 bytes／門檻 1,500,000，且**已接進 `deploy.yml` 成為真正的 gate**（M4 修）
 
-下一步是 **M4 收尾**。
+**M4 亦已完成**（README／pharmacy-portal／規格符合度稽核 ＋ 五項必修）。
+剩下的都是不阻擋上線的後續：Medium／Low 四項、43 條未覆核的稽核判定、以及 `trials-index` 減肥（F1 餘裕僅 3.2%）。
 
 四項全部完成：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（B8）、B 群失敗注入 fixture、§9.3.6 不變量反例（B6）與 C4 的三個 mutation。`tests/fixtures/run_all.py` **244 條斷言全綠**（v0.6 收斂後）。
 
@@ -188,12 +189,32 @@ A 群 fixture **已建立並補齊 v0.5 案例**（`tests/fixtures/a_core/` 73 �
 4. **失敗通知本身是壞的**：`gh issue create --label` 在 label 不存在時整個指令失敗。
    通知壞掉的時機正好是沒有人在看的時候
 
-## M4 — 收尾
+## M4 — 收尾　**已完成 2026-09-22**
 
-- [ ] README 更新為「已上線」，補網址與最新資料日期；補 §6.3 的 ID 穩定性界限說明
-- [ ] 加入 `pharmacy-portal` 的 `tools.json` 與首頁
-- [ ] 跑 `/codex-review`，以 plan.md 的 A1–H4 編號做規格符合度稽核
+- [x] README 更新為「已上線」（順帶修掉兩處過時的 payload 數字；§6.3.5 的 ID 穩定性界限原已有專節）
+- [x] 加入 `pharmacy-portal` 的 `tools.json`（gov 分類第 7 個，線上已驗）
+- [x] 跑 `/codex-review` 做 A1–H5 規格符合度稽核 → `符合 10／弱化 42／缺測 1／未實作 1`
+- [x] **五項必修全部修畢**（commit `9d10779`），見 `.ai-review/verdict.md`
 
+### 稽核抓到的三個誤導級問題（都已修）
+
+1. **§7.2 命中日期標錯**：非最新紀錄命中時顯示的是 Trial 的最新日期。
+   **而測試把這個錯誤值寫成 expected**——不是沒抓到，是鎖住了它。
+2. **§8.5 scope 沒有真的退回**：`results()` 疊代整個 cache，使用者拿到以部分索引
+   產生的結果集，畫面卻說已退回。對應 e2e 只驗一句寫死的錯誤字串（恆真）。
+3. **`?protocol=` 半套實作**：有 parse／build，`app.ts` 從不讀它。
+   **URL 收下然後靜默忽略，比不支援更糟。**
+
+另兩項是 gate 缺口：`measure-f1-live.mjs` 沒被任何 workflow 呼叫（F1 的四條量測邊界
+一條都沒被強制）、F2 完全未實作。兩者都已接上，部署鏈實跑驗過
+（F1 對真實部署 **1,452,124／1,500,000 合格**）。
+
+### 待辦（不阻擋上線）
+
+- Medium／Low 四項：E7 候選值只掃原形、C5 十五列只驗非空 tuple、
+  E2 的 selector oracle、A1 的 `<=`
+- Codex 54 條判定中**還有 43 條未逐行覆核**，多為「弱化」，建議分批處理
+- **獨立案**：`trials-index` 減肥或改分片（F1 餘裕僅 3.2%，它佔 98%）
 ---
 
 ## 明確不做（勿在後續迭代偷偷加回來）
