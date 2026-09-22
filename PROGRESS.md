@@ -889,3 +889,82 @@ bundle 只吃掉 0.7% 的預算。**仍是估算值**，F1 判定要等對真實
 1. **M3**：CI 與月更新（H 群）。
 2. G4 的圖表是規格允許的「可選」，目前只做數字卡與清單。
 3. **repo 仍未建 GitHub remote。**
+
+---
+
+## 2026-09-22（下午）— M3 完成並上線
+
+### 上線狀態
+
+| | |
+|---|---|
+| repo | <https://github.com/liangRXdev/Taiwan-Clinical-Trial-Radar>（public） |
+| 站台 | <https://taiwan-clinical-trial-radar.pages.dev>（Cloudflare Pages，Direct Upload） |
+| 已發布 | `datasetVersion=ef785e7addff8596`／5,888 Trial／18,736 列／`sourceUpdatedAt=2026-08-17` |
+| CI | 七個 gate 全綠 |
+
+三個 workflow：`ci.yml`（七 gate）、`update-data.yml`（月排程＋dispatch）、
+`deploy.yml`（接在前兩者之後，Direct Upload）。
+
+### H 群
+
+- **H1** job 名稱即 gate 名稱，與 §17 最低集合雙向對帳；無 `continue-on-error`；
+  lint 與 payload gate 各有注入測試證明轉得紅
+- **H2** baseline 在取得發布權之後才取樣；promotion 前以 `--expect-head` 再驗證，
+  不符即新增的 `BASELINE_MOVED`（exit 26）。重疊情境以 clone ＋ origin 實測
+- **H3** 上線當天 dispatch 兩次：第一次發布，第二次**重新下載**後回報
+  no normalized change、未 commit、HEAD 不變
+- **H4** 所有 `uses` pin 40-hex SHA；預設 `contents: read`；提權走具名 allowlist
+- **H5** `buildDate` 以 Asia/Taipei 日曆日產生，六組跨日／跨月／跨年邊界
+
+### F1 定案
+
+第一次對真實部署量：**3,940,752 bytes，超出門檻 2,440,752**。
+**最大單項不是資料，是 Google Fonts**——Noto Sans TC 的 CJK subset 共 2,489,933 bytes、
+佔 63%，比整個資料層還大。改系統字型堆疊後：
+
+| 項目 | 實收 br |
+|---|---:|
+| `trials-index` | 1,426,537 |
+| bundle（js＋css＋html） | 13,803 |
+| manifest ＋ stats | 11,412 |
+| **TOTAL** | **1,451,752**／門檻 1,500,000（餘 48,248） |
+
+量測方式見 `scripts/measure-f1-live.mjs`：以瀏覽器錄冷啟動到**功能性 readiness probe**
+之間發起的全部 request，再以原生 https 逐一重抓累加 body bytes。不用 Content-Length、
+不用解壓後長度、不用 transferSize，不含 header。
+
+**餘裕只有 3.2%，瓶頸完全是 `trials-index`（98%）。** 實收 br 比建置期 q11 估算高 52%
+——規格警告的「Cloudflare 動態壓縮比 q11 大」比預期嚴重得多。**trials-index 減肥或改分片
+列為獨立案**，本次不調門檻。
+
+### 只有真的跑過才會現形的四件事
+
+1. **`public/data/` 被 gitignore**，而 §9.2.3 要求發布物進版控——照原設定 Pages 沒有資料可送
+2. 解除 ignore 後更糟：`prepare-e2e-data.mjs` 寫進同一個目錄，而 promotion 第二步是
+   `git add -A`。跑過一次 e2e 再跑更新管線，fixture 就會被當成正式資料集 commit，
+   且那個 commit 長得跟正常的一模一樣。已改寫到 `dist/data/`
+3. **B 群注入 fixture 從未進版控**（被 `*.zip` 掃到）。本機因為留著產生物一直全綠，
+   第一次 CI 在 clean checkout 上以 FileNotFoundError 整組掛掉
+4. **失敗通知本身是壞的**：`gh issue create --label` 在 label 不存在時整個指令失敗。
+   部署鏈首次實跑才顯形——**通知壞掉的時機，正好是沒有人在看的時候**
+
+另有兩個設定層的教訓：`gh secret set` 不帶 `--body` 時在非互動環境會存成**空字串**
+（workflow 的「secret 為空即 fail-closed」第一次上線就派上用場）；
+新版 wrangler 的 `pages` 指令會委派到 Workers，建專案要 `--force` 才走 classic Pages。
+
+### 測試總數
+
+| 套件 | 數 |
+|---|---:|
+| pytest | 243 |
+| vitest | 211 |
+| Playwright（fixture） | 69 ＋ 2 skip |
+| fixture 自檢 | 289 條斷言 |
+
+### 下一步（M4）
+
+1. README 更新為「已上線」，補網址與最新資料日期、§6.3.5 的 ID 穩定性界限
+2. 加入 `pharmacy-portal` 的 `tools.json` 與首頁
+3. 跑 `/codex-review`，以 plan.md 的 A1–H5 做規格符合度稽核
+4. **獨立案**：`trials-index` 減肥或改分片（F1 餘裕只有 3.2%）

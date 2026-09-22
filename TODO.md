@@ -1,6 +1,14 @@
 # TODO
 
-狀態：**M1 進行中（ETL 主體已完成）。** 規格本體是 `.ai-review/plan.md` **v0.7**，驗收編號 A1–H5，動工前契約 **14 項**（§14）。
+狀態：**M0–M3 完成，已上線。** 規格本體是 `.ai-review/plan.md` **v0.9**，驗收編號 A1–H5，動工前契約 **14 項**（§14）。
+
+- 站台 <https://taiwan-clinical-trial-radar.pages.dev>（Cloudflare Pages，Direct Upload）
+- repo <https://github.com/liangRXdev/Taiwan-Clinical-Trial-Radar>（public，2026-09-22 建立）
+- 已發布 `datasetVersion=ef785e7addff8596`：5,888 Trial／18,736 列，`sourceUpdatedAt=2026-08-17`
+- **測試**：pytest 243、vitest 211、Playwright 69（fixture）＋ F4 兩條需 production 資料、fixture 自檢 289 條斷言
+- **F1 合格**：對真實部署實測 1,451,752 bytes／門檻 1,500,000（詳見 M3 一節）
+
+下一步是 **M4 收尾**。
 
 四項全部完成：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（B8）、B 群失敗注入 fixture、§9.3.6 不變量反例（B6）與 C4 的三個 mutation。`tests/fixtures/run_all.py` **244 條斷言全綠**（v0.6 收斂後）。
 
@@ -12,7 +20,7 @@ M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三�
 
 實跑結果與規格的獨立實測逐一相符：5,888 Trial／18,736 列／846 平手組／143 衝突組／18 nearDuplicateGroup。
 
-**M2 全部完成**（A／B／C ＋ 收尾）。下一步：**M3 CI**。
+**M2 全部完成**（A／B／C ＋ 收尾）。**M3 亦已完成並上線。**
 
 **2026-09-22 的哨兵抓到一個真的漏報**：把 `searchLatestShort` 改成只讀 cohort 第一筆時，當時 206 條前端測試無一轉紅——同日兩筆中只出現在後一筆的值會靜默搜不到，使用者看到的是「查無資料」。D1 已補「cohort 內每一筆 record 的值都搜得到」殺掉該變異。
 
@@ -87,7 +95,7 @@ M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三�
 
 然後：
 
-- [ ] `git init` 後首個 commit 已完成；建 GitHub repo（public／private 待定）
+- [x] `git init` 後首個 commit 已完成；GitHub repo 已建（**public**，2026-09-22）
 - [x] `.gitignore`（排除下載的 ZIP／CSV 與產生物）
 - [x] `LICENSE`、`pyproject.toml`、`package.json`
 - [x] `scripts/fetch_tfda.py` — fail-closed 下載與驗證，error code 依 §9.5，每種相異 exit code
@@ -142,16 +150,43 @@ A 群 fixture **已建立並補齊 v0.5 案例**（`tests/fixtures/a_core/` 73 �
 - [x] G1／G2／G3、E5～E8、D7、F4；分批渲染後 F4 最差 p95 71.3 ms
 - [x] **M2 收尾**（2026-09-22）：E2(b)／E3 的 metadata surface（`src/ui/meta.ts`，前端原本**完全沒渲染** `sourceUpdatedAt`／`builtAt`／總數）、E1 的「狀態陳述 → 概念」雙向對帳、E4 的 8 個 surface 封閉 inventory、D1–D6／D8 的欄位歸屬與衝突分組（fixture 補 canary 列與 7 組衝突對，trialCount 47 → 55）、D4／D5 的 e2e DOM 斷言
 
-## M3 — CI 與月更新（驗收 H 群）
+## M3 — CI 與月更新（驗收 H 群）　**已完成 2026-09-22**
 
-- [ ] `ci.yml`：lint、type-check、pytest、vitest、build、a11y smoke；每個 gate 注入已知失敗驗證會 fail；無 `continue-on-error`
-- [ ] `update-data.yml`：月排程 + `workflow_dispatch`，**schedule 與 manual 共用同一 concurrency group**、`cancel-in-progress: false`
-- [ ] **baseline 取樣時點為取得發布權之後**：顯式 fetch 並 checkout 預設分支最新 tip（`actions/checkout` 預設取觸發時 SHA，排隊後會是舊的）；promotion 前再驗證版本未變，不符即 fail-closed
-- [ ] 失敗時保留 last known good 並開 issue／通知
-- [ ] Actions 所有直接與間接 `uses` pin 不可變 SHA；預設 permissions 最小，只有更新 job 有 `contents: write`
-- [ ] **上線當天手動 dispatch 一次，再跑第二次驗冪等**：第二次**重新下載並驗證 source SHA 相同**（不是快取第一次結果），斷言兩次都完整跑完 pipeline、第二次回報 no normalized change 且不產生 commit
-- [ ] H2 的真正重疊情境測試（兩 run 同時排隊、前一個發布後第二個須重取 baseline）
-- [ ] Cloudflare Pages 專案設定與首次部署
+- [x] `ci.yml`：七個 gate（lint／typecheck／pytest／vitest／playwright／a11y／payload），job 名稱即 gate 名稱，與 §17 最低集合雙向對帳；無 `continue-on-error`
+- [x] `update-data.yml`：月排程 + `workflow_dispatch`，共用 concurrency group、`cancel-in-progress: false`
+- [x] **baseline 取樣在取得發布權之後**：顯式 fetch 並 checkout 分支最新 tip；promotion 前以 `--expect-head` 再驗證，不符即 `BASELINE_MOVED`（exit 26，§9.5 新增）
+- [x] 失敗保留 last known good 並開 issue（promotion 全部成功才 commit，失敗時根本沒寫入）
+- [x] 所有 `uses` pin 40-hex SHA；預設 `contents: read`，提權走具名 allowlist
+- [x] **上線當天 dispatch 兩次驗冪等**：第一次發布 `ef785e7addff8596`（5,888 Trial／18,736 列），第二次重新下載後回報 no normalized change、未 commit、HEAD 不變
+- [x] H2 的重疊情境測試（clone ＋ origin，從另一側 push 後斷言 fail-closed；另測「問不到 tip」同樣不放行）
+- [x] Cloudflare Pages 專案設定與首次部署（Direct Upload）
+- [x] `deploy.yml`：接在 CI 與月更新之後，以 `workflow_run.head_sha` 為 build 輸入；部署後驗證線上 `datasetVersion` 相符
+
+### F1 定案：**合格，但餘裕只有 3.2%**
+
+第一次對真實部署量是 **3,940,752 bytes，超出門檻 2,440,752**。歸因後最大單項不是資料，
+是 Google Fonts（2,489,933 bytes、63%）。改系統字型堆疊後降到 **1,451,752 bytes**（餘 48,248）。
+
+| 項目 | 實收 br |
+|---|---:|
+| `trials-index` | 1,426,537 |
+| bundle（js＋css＋html） | 13,803 |
+| manifest ＋ stats | 11,412 |
+| **TOTAL** | **1,451,752**／門檻 1,500,000 |
+
+**瓶頸完全是 `trials-index`（佔 98%）**，且實收 br 比建置期 q11 估算高 52%——規格警告的
+「Cloudflare 動態壓縮比 q11 大」比預期嚴重。上游資料再長就會再次超標，**trials-index
+減肥或改分片列為 M4 之後的獨立案**，不在此次調整門檻。
+
+### 這一輪只有真的跑過才會現形的三件事
+
+1. `public/data/` 原本被 gitignore，而 §9.2.3 要求發布物進版控——照原設定 Pages 沒有資料可送
+2. 解除 ignore 後更糟：`prepare-e2e-data.mjs` 寫進同一個目錄，而 promotion 第二步是
+   `git add -A`。跑過 e2e 再跑更新管線會把 fixture 當正式資料集 commit。已改寫到 `dist/data/`
+3. `tests/fixtures/b_failures/inputs/*.zip` 被 `.gitignore` 的 `*.zip` 掃到，從未進版控；
+   本機一直全綠，**第一次 CI 在 clean checkout 上整組掛掉**
+4. **失敗通知本身是壞的**：`gh issue create --label` 在 label 不存在時整個指令失敗。
+   通知壞掉的時機正好是沒有人在看的時候
 
 ## M4 — 收尾
 
