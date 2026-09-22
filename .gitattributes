@@ -6,3 +6,6 @@ tests/fixtures/a7_identity_collision/input.csv -text
 
 # artifact 樣本是 B8 的證據（digest 對最終檔案位元組計算），任何行尾轉換都會使它失效。
 tests/fixtures/artifact_sample/out/** -text
+
+# B 群的注入 fixture 是 ZIP（二進位），且測試對它們的位元組有精確預期。
+tests/fixtures/b_failures/inputs/*.zip -text

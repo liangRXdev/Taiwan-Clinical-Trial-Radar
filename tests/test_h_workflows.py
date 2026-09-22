@@ -138,6 +138,39 @@ def test_payload_gate_在沒有已發布資料時_fail_closed(tmp_path: Path):
         assert "Tier 0" in out.stderr or "找不到" in out.stderr
 
 
+def test_每個_fixture_檔案都在版控內():
+    """**clean checkout 跑得起來才算數。**
+
+    2026-09-22 的第一次 CI：`tests/fixtures/b_failures/inputs/*.zip` 被 `.gitignore`
+    的 `*.zip`（本意是擋 42 MB 的來源下載）掃到，從未進版控。本機因為留著產生物
+    而完全看不出來，clean checkout 上 B1 的整組測試以 FileNotFoundError 掛掉。
+
+    這條掃的是**測試實際會讀的 fixture 目錄**，不是「有沒有忘記 git add」的泛泛檢查。
+    """
+    tracked = set(
+        subprocess.run(
+            ["git", "ls-files", "tests/fixtures"],
+            cwd=ROOT, check=True, capture_output=True, text=True, encoding="utf-8",
+        ).stdout.split()
+    )
+    skip_dirs = {"__pycache__"}
+    skip_names = {"_num.txt"}
+
+    missing = []
+    for path in (ROOT / "tests" / "fixtures").rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        if any(part in skip_dirs for part in path.parts) or path.name in skip_names:
+            continue
+        if path.suffix in {".pyc"}:
+            continue
+        if rel not in tracked:
+            missing.append(rel)
+
+    assert not missing, f"fixture 未進版控，clean checkout 會失敗：{missing}"
+
+
 def test_e2e_資料不得寫進已發布目錄():
     """promotion 的第二步是 `git add -A`——測試資料落在 `public/data/` 就會被當成
     正式資料集 commit 出去，而那個 commit 長得跟正常的一模一樣。"""
