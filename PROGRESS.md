@@ -842,13 +842,50 @@ bundle 只吃掉 0.7% 的預算。**仍是估算值**，F1 判定要等對真實
 | 套件 | 數 |
 |---|---:|
 | pytest | 202 |
-| vitest | 105 |
-| Playwright（production） | 54 |
+| vitest | 207 |
+| Playwright（fixture） | 69 ＋ 2 skip |
+| Playwright（production） | 71 |
+
+---
+
+## 2026-09-22 — M2 收尾（E2(b)／E3、E1／E4、D 群）
+
+### 做了什麼
+
+**metadata surface 原本根本不存在。** `sourceUpdatedAt`／`builtAt` 在 `types.ts` 裡有、
+在畫面上一個字都沒有，E3 的四個 label 全部渲染不出來。新增 `src/ui/meta.ts`，
+並把首頁 lede 裡重複的總數移除——同一個事實兩個 surface，漂移時使用者看得到、測試看不到。
+
+| 驗收 | 處置 |
+|---|---|
+| E2(b)／E3 | `src/ui/meta.ts` ＋ `tests/web/meta.test.ts`（25 條）。`builtAt` 手算 +08:00 而不用 `toLocaleString`（後者依環境 ICU，同一份位元組可能格出兩種字串） |
+| E1 | 改為「狀態陳述 → 概念」雙向對帳：新增文句未登記、或清單留下死概念都轉紅。禁字只掃自撰文句 |
+| E4 | 三個散案 → 8 個 surface 的封閉 inventory ＋ `src/` 全域無 innerHTML 的結構性保證 |
+| D1／D2／D3／D6／D8 | `tests/web/dgroup.test.ts`（56 條），fixture 補 canary 列與 7 組衝突對 |
+| D4／D5 | `tests/e2e/filters.spec.ts`（17 條）：canonical URL、reload 後控制項、無狀態維度 |
+
+### fixture 的兩類衍生列
+
+- **canary 列**：16 欄各一個全域唯一 ASCII token。a_core 的自然「唯一值」多半同時
+  出現在別欄，拿它當 canary 測到的是巧合而不是欄位歸屬。
+- **衝突對 7 組**：為每一個可篩選且可能衝突的欄位各造一對同日、只差該欄的列。
+  a_core 只涵蓋 5 欄，缺的 7 欄不補會讓 D6 退化成「沒有資料所以沒有反例」而靜默全綠。
+
+`資料更新時間` 不造 fixture 而立不變量：cohort 的定義就是同一個可採計日期，
+該欄結構上不可能衝突。trialCount 47 → 55、recordCount 78 → 93。
+
+### 哨兵抓到的洞
+
+把 `searchLatestShort` 改成只讀 cohort 第一筆時，**當時 206 條前端測試無一轉紅**。
+同日兩筆中只出現在後一筆的值會靜默搜不到，而使用者看到的是「查無資料」——
+漏報，本專案風險排序裡最嚴重的一類。D1 已補「cohort 內每一筆 record 的值都搜得到」，
+並附「沒檢到第一筆以外的值就算沒測」的自我保護。
+
+另一個較小的：「未知參數保留於 URL」第一版是恆真的——app 載入時本來就不改寫 URL，
+測到的是「沒發生的事沒發生」。改成先勾一個篩選逼出一次 canonical 改寫再斷言。
 
 ### 下一步
 
-1. **M2 收尾**：E2(b)／E3 的 metadata surface（`sourceUpdatedAt`／`builtAt`／總數）、
-   E1／E4 的完整 inventory、D1–D6／D8 的 DOM 層斷言。G4 的圖表是規格允許的「可選」，
-   目前只做數字卡與清單。
-2. **M3**：CI 與月更新。
+1. **M3**：CI 與月更新（H 群）。
+2. G4 的圖表是規格允許的「可選」，目前只做數字卡與清單。
 3. **repo 仍未建 GitHub remote。**

@@ -12,7 +12,9 @@ M1 ETL **已在真實資料上跑通**：`trial_radar/` 十一個模組 ＋ 三�
 
 實跑結果與規格的獨立實測逐一相符：5,888 Trial／18,736 列／846 平手組／143 衝突組／18 nearDuplicateGroup。
 
-M2-A／B／C 已完成（核心邏輯、UI、e2e）。下一步：**M2 收尾**（E2(b)／E3、E1／E4 inventory、D 群 DOM 斷言）→ **M3 CI**。
+**M2 全部完成**（A／B／C ＋ 收尾）。下一步：**M3 CI**。
+
+**2026-09-22 的哨兵抓到一個真的漏報**：把 `searchLatestShort` 改成只讀 cohort 第一筆時，當時 206 條前端測試無一轉紅——同日兩筆中只出現在後一筆的值會靜默搜不到，使用者看到的是「查無資料」。D1 已補「cohort 內每一筆 record 的值都搜得到」殺掉該變異。
 
 **M1 前不要寫 ETL 實作程式碼**（`artifact_sample/build_sample.py` 是 B8 的證據，不是實作，M1 不得沿用）。
 
@@ -138,7 +140,7 @@ A 群 fixture **已建立並補齊 v0.5 案例**（`tests/fixtures/a_core/` 73 �
 - [x] 免責三項核心性質在三個頁面可見（§10），G1／G2 已綁定
 - [x] 數字卡與清單（**圖表未做，規格允許的可選項**）
 - [x] G1／G2／G3、E5～E8、D7、F4；分批渲染後 F4 最差 p95 71.3 ms
-- [ ] **M2 收尾**：E2(b)／E3 的 metadata surface、E1／E4 完整 inventory、D1–D6／D8 的 DOM 斷言
+- [x] **M2 收尾**（2026-09-22）：E2(b)／E3 的 metadata surface（`src/ui/meta.ts`，前端原本**完全沒渲染** `sourceUpdatedAt`／`builtAt`／總數）、E1 的「狀態陳述 → 概念」雙向對帳、E4 的 8 個 surface 封閉 inventory、D1–D6／D8 的欄位歸屬與衝突分組（fixture 補 canary 列與 7 組衝突對，trialCount 47 → 55）、D4／D5 的 e2e DOM 斷言
 
 ## M3 — CI 與月更新（驗收 H 群）
 
