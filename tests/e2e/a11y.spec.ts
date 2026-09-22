@@ -51,7 +51,7 @@ async function assertNotErrorPage(page: Page, routeName: string): Promise<void> 
 }
 
 /** 兩種資料規模。狀態矩陣的覆蓋責任依規模不同——見 `狀態矩陣覆蓋`。 */
-const FIXTURE_TRIALS = 47;
+const FIXTURE_TRIALS = 55;
 const PRODUCTION_TRIALS = 5888;
 
 let detailId = "";

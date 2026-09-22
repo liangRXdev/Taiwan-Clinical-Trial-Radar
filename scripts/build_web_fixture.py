@@ -58,12 +58,102 @@ def _whitespace_variant(rows: list[dict]) -> list[dict]:
     return [variant]
 
 
+#: D1 的 canary：**每一欄一個全域唯一的 token**。
+#:
+#: 短欄 5 個與長欄 2 個是正面 canary（搜尋得到，且只在對應 scope 搜得到）；
+#: 其餘 9 欄是負面 canary（任何 scope 都搜不到）。a_core 的自然值做不到這件事
+#: ——它的「唯一值」多半同時出現在別欄，用它當 canary 測到的是巧合而不是欄位歸屬。
+#:
+#: token 一律 ASCII 大寫：§8.1 的 casefold 與 NFKC 折疊對它是恆等變換，
+#: 搜不到時才能確定是欄位歸屬錯了，而不是正規化把 token 改掉了。
+CANARY_TOKENS = {
+    "臨床試驗計畫書編號": "CANARYPROTOCOLZZ",
+    "臨床試驗計畫中文名稱": "CANARYTITLEZZ",
+    "臨床試驗申請者": "CANARYAPPLICANTZZ",
+    "適應症中文": "CANARYINDICATIONZZ",
+    "TFDA收文號": "CANARYRECEIPTZZ",
+    "試驗目的": "CANARYPURPOSEZZ",
+    "主要評估指標": "CANARYENDPOINTZZ",
+    "臨床試驗期別": "CANARYPHASEZZ",
+    "本臨床試驗規模": "CANARYSCALEZZ",
+    "試驗預計執行期間起": "CANARYSTARTZZ",
+    "試驗預計執行期間迄": "CANARYENDZZ",
+    "全球預計受試者人數": "CANARYGLOBALZZ",
+    "台灣預計受試者人數": "CANARYLOCALZZ",
+    "納入條件": "CANARYINCLUSIONZZ",
+    "排除條件": "CANARYEXCLUSIONZZ",
+    "資料更新時間": "CANARYUPDATEDZZ",
+}
+
+
+def _canary_row(rows: list[dict]) -> list[dict]:
+    """加一列 16 欄各帶唯一 token 的衍生資料（D1）。
+
+    衍生而非改動 a_core：那份 fixture 的位元組被 `.gitattributes` 釘住，
+    且 A 群的 oracle 逐列對應，動它會連帶打翻 ETL 那一側的斷言。
+
+    這一列刻意讓多個欄位落在「無法解析」狀態（期間、人數、更新時間都是文字），
+    那是 canary 的代價而不是瑕疵——D1 驗的是**欄位歸屬**，不是解析結果。
+    """
+    template = dict(rows[0])
+    row = {col: CANARY_TOKENS.get(col, template[col]) for col in template}
+    assert set(row) == set(CANARY_TOKENS), (
+        f"canary 欄位與來源欄位不符：多 {set(CANARY_TOKENS) - set(row)}、"
+        f"少 {set(row) - set(CANARY_TOKENS)}"
+    )
+    return [row]
+
+
+#: D6 的衝突 oracle：`欄位 → (值A, 值B)`。**每一個可篩選且可能衝突的欄位各一組**，
+#: 外加四個長文字欄位（它們不可篩選，但照樣進 `conflictFields`）。
+#:
+#: a_core 只涵蓋 `臨床試驗期別`／`台灣預計受試者人數`／`全球預計受試者人數`／
+#: `適應症中文`／`納入條件` 五欄；缺的七欄若不補，D6 會退化成「沒有資料所以沒有反例」
+#: 而靜默全綠——那正是漏報，而漏報在本專案的風險排序裡最嚴重。
+#:
+#: **`資料更新時間` 不在此表且不可能在**：cohort 的定義就是「同一個可採計日期」，
+#: 同一 cohort 內該欄 typed 必然相等。D6 對它立的是不變量而不是 fixture。
+CONFLICT_PAIRS = {
+    "本臨床試驗規模": ("多國多中心", "台灣單中心"),
+    "臨床試驗申請者": ("測試甲藥廠股份有限公司", "測試乙藥廠股份有限公司"),
+    "試驗預計執行期間起": ("2024/01/01", "2024/03/01"),
+    "試驗預計執行期間迄": ("2027/12/31", "2028/06/30"),
+    "排除條件": ("懷孕", "哺乳"),
+    "試驗目的": ("評估療效", "評估安全性"),
+    "主要評估指標": ("OS", "PFS"),
+}
+
+#: 衝突列共用的資料更新日。**兩列必須同日**，否則後者只是較新版本而非衝突。
+CONFLICT_UPDATED_AT = "2025/06/01"
+
+
+def _conflict_rows(rows: list[dict]) -> list[dict]:
+    """為 `CONFLICT_PAIRS` 的每一欄產生一對同日、**只差該欄**的衍生列（D6）。
+
+    兩列的 `TFDA收文號` 不同，那不影響結論——收文號不是呈現欄位（§6.4.1），
+    不會進 `conflictFields`。若它是，這組 fixture 就會每一對都多一個衝突欄位，
+    D6 的「精確集合」斷言立刻轉紅，而不是靜默通過。
+    """
+    donor = next(r for r in rows if r[PROTOCOL] == "BIG-001")
+    out: list[dict] = []
+    for n, (field, (a, b)) in enumerate(CONFLICT_PAIRS.items(), start=1):
+        for half, value in enumerate((a, b)):
+            row = dict(donor)
+            row[PROTOCOL] = f"CONFLICT-{n:02d}"
+            row["資料更新時間"] = CONFLICT_UPDATED_AT
+            row["TFDA收文號"] = f"WEB-FIXTURE-CF{n:02d}{half}"
+            row[field] = value
+            out.append(row)
+    return out
+
+
 def build() -> tuple[dict[str, bytes], dict]:
     import datetime
 
     rows_path = ROOT / "tests" / "fixtures" / "a_core" / "rows.json"
     rows = list(json.loads(rows_path.read_text(encoding="utf-8"))["rows"].values())
-    trials = build_trials(rows + _whitespace_variant(rows), datetime.date(2026, 9, 18))
+    derived = _whitespace_variant(rows) + _canary_row(rows) + _conflict_rows(rows)
+    trials = build_trials(rows + derived, datetime.date(2026, 9, 18))
     out = build_artifacts(trials, **BUILD_KW)
     return out.published, out.manifest
 
