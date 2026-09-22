@@ -9,12 +9,13 @@
       name="description"
       content="查詢 TFDA 公開的藥品臨床試驗審查紀錄（dataset 205）。供臨床藥師與醫療專業人員檢索試驗編號、申請者、適應症與期別；不提供招募狀態。"
     />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      **不載入任何外部字型。** 2026-09-22 對真實部署量 F1：Google Fonts 的
+      Noto Sans TC subset 共 2,489,933 bytes，佔冷啟動的 63%，比整個資料層還大。
+      字型堆疊定義在 styles.css 的 `--font-sans`／`--mono`，全部 local。
+      這條同時是隱私措施：不再把使用者 IP／UA 送給第三方。
+      `tests/web/inventory.test.ts` 有靜態守門，別把外部字型加回來。
+    -->
   </head>
   <body>
     <div id="app"></div>

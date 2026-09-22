@@ -405,6 +405,21 @@ describe("E4：來源資料可到達的輸出 surface 封閉 inventory", () => {
     expect(stripComments(readFileSync(srcFiles()[0]!, "utf-8")).trim().length).toBeGreaterThan(0);
   });
 
+  it("**不得載入任何外部資源**：字型、腳本、樣式一律同源", () => {
+    // 2026-09-22：Google Fonts 佔冷啟動 63%（2,489,933 bytes），且把使用者 IP／UA
+    // 送給第三方。這條同時守 F1 與隱私——兩者都不會在畫面上顯示出問題。
+    const html = readFileSync(join(SRC_DIR, "..", "index.html"), "utf-8");
+    const sources = [html, ...srcFiles().map((f) => readFileSync(f, "utf-8"))];
+    const external = /https?:\/\/(?!localhost)[^\s"')]+/g;
+
+    for (const body of sources) {
+      // 註解裡提到網域是說明，不是載入；只掃屬性值與 CSS 的 url()
+      const stripped = body.replaceAll(/<!--[\s\S]*?-->/g, "").replaceAll(/\/\*[\s\S]*?\*\//g, "");
+      const hits = [...stripped.matchAll(external)].map((m) => m[0]);
+      expect(hits, `出現外部資源：${hits.join("、")}`).toEqual([]);
+    }
+  });
+
   it("metadata surface 的值同樣不是 HTML（E3 的 surface 也在來源可達路徑上）", () => {
     const poisoned = { ...structuredClone(manifest), sourceUpdatedAt: XSS };
     expectInert(renderMeta(poisoned), XSS);

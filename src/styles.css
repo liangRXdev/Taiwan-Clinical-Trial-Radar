@@ -9,6 +9,15 @@
  * - `--warning`／`--success` **不當文字色**；警示文字用 --warn-text（on #FFF3E0 = 6.20:1）。
  *
  * **不做 dark mode**（設計決策）：整個工具集在 pharmacy-portal 底下要是同一個身分。
+ *
+ * **字型不走 Google Fonts**（2026-09-22 改）：house style 對單檔 HTML 工具允許它，
+ * 理由是「CJK 字檔數 MB，self-host 是淨損」。本站對真實部署量過 F1 之後，那個「數 MB」
+ * 不再是假設——**冷啟動實收 2,489,933 bytes、佔 Tier 0 的 63%**，比整個資料層還大，
+ * 而 F1 的門檻是 1,500,000。改 self-host 確實是淨損，但**改系統字型堆疊是把它歸零**，
+ * 兩者不是同一件事。副帶好處：不再把使用者 IP／UA 送給第三方。
+ *
+ * 堆疊把 `Noto Sans TC`／`JetBrains Mono` 排在最前——**已安裝的人看到的仍是同一套字**，
+ * 沒安裝的人落到平台自帶的 CJK 字型，兩者都不下載任何位元組。
  */
 
 :root {
@@ -25,7 +34,13 @@
   --warning: #e67e22;
   --warn-text: #8a4b08;
   --radius: 8px;
-  --mono: "JetBrains Mono", monospace;
+  /* 堆疊裡每個名稱都是 local()，任何一個都不會觸發網路請求 */
+  --font-sans:
+    "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Hiragino Sans CNS",
+    "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono:
+    "JetBrains Mono", "DM Mono", ui-monospace, SFMono-Regular, "SF Mono",
+    Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 * { box-sizing: border-box; }
@@ -33,7 +48,7 @@
 body {
   margin: 0;
   background: var(--bg-primary);
-  font-family: "Noto Sans TC", sans-serif;
+  font-family: var(--font-sans);
   color: var(--text-primary);
   line-height: 1.6;
   font-size: 0.95rem;
@@ -172,6 +187,29 @@ button:focus-visible {
    卡片內的 .hint 不受影響（白底 4.83:1）。 */
 .stats > .hint { color: var(--text-primary); }
 .card--stat { padding: 1rem; }
+
+/* 收合的統計卡。原生 <details>：鍵盤、aria-expanded、Ctrl+F 自動展開都是免費的 */
+details.card--stat { padding: 0.75rem 1rem; }
+details.card--stat > .hint,
+details.card--stat > .stat__table { margin-top: 0.75rem; }
+.stat__summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  cursor: pointer; list-style: none; font-size: 1.05rem; font-weight: 500;
+}
+/* 自訂三角：預設 marker 在 Safari 會另外畫一個 */
+.stat__summary::-webkit-details-marker { display: none; }
+.stat__summary::before {
+  content: "▸"; color: var(--accent-hover); font-size: 0.85em; flex: none;
+  transition: transform 0.12s ease;
+}
+details[open] > .stat__summary::before { transform: rotate(90deg); }
+/* 組數是次要資訊，但在白卡內，muted 合規（4.83:1） */
+.stat__n { font-size: 0.75rem; color: var(--text-muted); font-weight: 400; }
+.stat__summary:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .stat__summary::before { transition: none; }
+}
 .stat__table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .stat__table th, .stat__table td { border: 1px solid var(--border); padding: 0.35rem 0.5rem; text-align: left; }
 /* --accent 在 --accent-light 上只有 4.36:1，表頭文字用 --accent-hover（5.41:1） */
