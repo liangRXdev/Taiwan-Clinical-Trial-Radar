@@ -46,8 +46,17 @@ function facetCard(name: string, facet: Facet, denominatorTrials: number): HTMLE
     { label: FILTER_SPECIAL.conflicted, count: facet.conflicted, special: true },
   ];
 
-  return el("section", { class: "card card--stat", [STAT_SURFACE_ATTR]: name }, [
-    el("h3", { class: "card__title", text: FACET_TITLES[name] ?? name }),
+  // **預設收合**：`applicant` 有 371 個 bucket，三張卡攤開會讓頁面長到把上方的
+  // 結果清單擠出視野。用原生 `<details>` 而不是自刻 toggle——鍵盤操作、
+  // `aria-expanded`、瀏覽器內尋找（Ctrl+F 會自動展開）都是免費的。
+  //
+  // **收合的是呈現，不是資料**：DOM 節點照樣存在，E2(a) 的雙向對帳與 multiset
+  // 斷言不受影響。把資料抽掉才會讓「有幾個 bucket」變成畫面狀態的函數。
+  return el("details", { class: "card card--stat", [STAT_SURFACE_ATTR]: name }, [
+    el("summary", { class: "card__title stat__summary" }, [
+      el("span", { text: FACET_TITLES[name] ?? name }),
+      el("span", { class: "mono stat__n", text: `${rows.length} 組` }),
+    ]),
     el("p", { class: "hint", text: STATS.denominatorNote(denominatorTrials) }),
     el(
       "table",
