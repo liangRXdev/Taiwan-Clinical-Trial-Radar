@@ -70,20 +70,28 @@ function hitNodes(trial: Trial, hits: readonly Hit[]): HTMLElement | null {
     }
   }
 
-  // 命中是否全部來自最新 cohort。非最新時須標示來源日期（§7.2）。
+  // 命中是否來自最新 cohort 以外。非最新時須標示**該筆紀錄**的日期（§7.2）。
   const latestIds = new Set(trial.searchShortLatest.map((e) => e.r));
-  const fromOlder = hits.some((h) => !latestIds.has(h.recordId));
+  const older = hits.filter((h) => !latestIds.has(h.recordId));
 
   const parts: HTMLElement[] = [
     el("span", { class: "hit__fields", text: `命中欄位：${[...names].join("、")}` }),
   ];
 
-  if (fromOlder) {
-    const date = formatDate(trial.latestSourceDate);
-    // **無可採計日期時不得偽造**（§7.2）——標「資料日期不明」而不是塞一個日期
-    parts.push(
-      chip("info", date === null ? LABEL.hitDateUnknown : LABEL.hitFromOlder(date)),
-    );
+  if (older.length > 0) {
+    // **日期取自命中的那一筆紀錄，不是 `trial.latestSourceDate`。**
+    // 後者是 Trial 最新紀錄的日期，而這個分支的前提正是「命中不在最新 cohort 內」
+    // ——用它等於顯示一個不屬於該紀錄的日期，比不顯示更誤導。
+    const dates = [...new Set(older.map((h) => h.date).filter((d): d is string => d !== null))]
+      .sort()
+      .map((d) => formatDate(d)!);
+
+    // **列出全部日期**：多筆較舊命中日期不同時，只顯示一個等於替使用者挑了一筆。
+    if (dates.length > 0) parts.push(chip("info", LABEL.hitFromOlder(dates)));
+
+    // **無可採計日期時不得偽造**（§7.2）。與上一條可並存：有些較舊命中有日期、
+    // 有些沒有，兩件事都要說。
+    if (older.some((h) => h.date === null)) parts.push(chip("info", LABEL.hitDateUnknown));
   }
 
   return el("div", { class: "hit" }, parts);

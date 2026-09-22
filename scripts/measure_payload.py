@@ -32,9 +32,12 @@ DIST = ROOT / "dist"
 #: v0.8 同時存在兩個口徑，落在中間的 bundle 可依任一口徑宣告通過。
 THRESHOLD_BYTES = 1_500_000
 
-#: bundle 端納入量測的副檔名。字型目前不自行託管（Google Fonts 由瀏覽器另取），
-#: 有一天改為自託管時這裡要一起加，否則會漏算。
+#: bundle 端納入量測的副檔名。**本站不載入任何外部資源**（含網頁字型），
+#: 有一天改為自託管字型時這裡要一起加，否則會漏算。
 BUNDLE_SUFFIXES = {".html", ".js", ".css"}
+
+#: §11 F2：按需檔案的壓縮基線。**不計入 F1**，超出記錄值 20% 在 CI 告警。
+BASELINE_PATH = ROOT / "payload-baseline.json"
 
 
 def brotli_size(data: bytes) -> int:
@@ -53,6 +56,40 @@ def tier0_data_files(manifest: dict) -> list[tuple[str, Path]]:
         rel = manifest["files"][key]["path"]
         out.append((rel, PUBLIC_DATA / rel))
     return out
+
+
+def check_on_demand(manifest: dict) -> dict:
+    """§11 F2：逐一重算按需檔案的 q11，與基線比較。
+
+    **以 artifact 的實際位元組重算，不讀 manifest 的 `brotliBytes`**——
+    後者是 manifest 自己宣稱的值，而 `datasetVersion` 與 `artifactDigest` 都不含
+    manifest 自身（§9.3.2），改它不會讓任何 digest 比較轉紅。拿它當基線比較的輸入
+    等於「manifest 說多少就信多少」的循環自證。
+    """
+    if not BASELINE_PATH.exists():
+        return {"status": "no-baseline", "files": [], "warnings": []}
+
+    baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    ratio_limit = baseline.get("warnRatio", 1.20)
+
+    files, warnings = [], []
+    for key, recorded in baseline["files"].items():
+        meta = manifest["files"].get(key)
+        if meta is None:
+            warnings.append({"file": key, "brotliBytes": 0, "baselineBytes": recorded["brotliBytes"],
+                             "ratio": 0.0, "note": "manifest 已無此檔"})
+            continue
+        path = PUBLIC_DATA / meta["path"]
+        actual = brotli_size(path.read_bytes())
+        base_bytes = recorded["brotliBytes"]
+        ratio = actual / base_bytes if base_bytes else float("inf")
+        row = {"file": key, "path": meta["path"], "brotliBytes": actual,
+               "baselineBytes": base_bytes, "ratio": round(ratio, 4)}
+        files.append(row)
+        if ratio > ratio_limit:
+            warnings.append(row)
+
+    return {"status": "ok", "warnRatio": ratio_limit, "files": files, "warnings": warnings}
 
 
 def main() -> int:
@@ -93,6 +130,8 @@ def main() -> int:
     total = sum(e["brotliBytes"] for e in entries)
     over = total > THRESHOLD_BYTES
 
+    on_demand = check_on_demand(manifest)
+
     report = {
         "note": (
             "建置期 brotli q11 估算值，**不是 F1 的驗收結果**。"
@@ -104,6 +143,8 @@ def main() -> int:
         "headroomBytes": THRESHOLD_BYTES - total,
         "exceedsThreshold": over,
         "files": entries,
+        # §11 F2：與 Tier 0 **分開列出**，不相加——兩者的門檻與語意都不同
+        "onDemand": on_demand,
     }
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -112,6 +153,17 @@ def main() -> int:
     for e in entries:
         print(f"  {e['kind']:6} {e['brotliBytes']:>9,}  {e['path']}")
     print(f"  {'TOTAL':6} {total:>9,}  （門檻 {THRESHOLD_BYTES:,}，餘 {THRESHOLD_BYTES - total:,}）")
+
+    for w in on_demand["warnings"]:
+        print(
+            f"  ⚠ F2：{w['file']} 為 {w['brotliBytes']:,} bytes，"
+            f"超出基線 {w['baselineBytes']:,} 的 {w['ratio']:.0%}",
+            file=sys.stderr,
+        )
+    if on_demand["warnings"]:
+        # **告警不是失敗**（§11 F2）：上游資料長大是正常的，要的是有人看到並決定，
+        # 不是擋住月更新。真正該擋的是 F1，那由 total 判定。
+        print("  （F2 為告警，不影響 exit code）", file=sys.stderr)
 
     if over:
         print(

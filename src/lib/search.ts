@@ -45,11 +45,22 @@ export interface Hit {
   recordId: string;
   /** 命中的欄位索引（對應該檔的 `fields` 順序）。**列出全部**，§7.2 要求 */
   fieldIndexes: number[];
+  /**
+   * **命中那一筆紀錄**的可採計日期（`YYYY-MM-DD`），無可採計日期為 `null`。
+   *
+   * §7.2 的「命中來自 YYYY/MM/DD」指的是**這個**日期，不是 Trial 的
+   * `latestSourceDate`。兩者在「命中來自較舊紀錄」的情形下**必然不同**，
+   * 而那正是要標示的情形——用後者等於顯示一個不屬於該紀錄的日期。
+   *
+   * `trials-index` 內嵌的 `searchShortLatest` 沒有 `d` 欄（它全是最新 cohort，
+   * 不會觸發該標示），那條路徑填 `null`。
+   */
+  date: string | null;
 }
 
 /** 對單一 record 求出命中欄位；未命中回傳 `null`。 */
 export function matchRecord(
-  entry: { r: string; f: string[] },
+  entry: { r: string; f: string[]; d?: string | null },
   terms: readonly string[],
 ): Hit | null {
   if (!recordMatches(entry.f, terms)) return null;
@@ -60,7 +71,7 @@ export function matchRecord(
   entry.f.forEach((value, i) => {
     if (terms.some((t) => value.includes(t))) fieldIndexes.push(i);
   });
-  return { recordId: entry.r, fieldIndexes };
+  return { recordId: entry.r, fieldIndexes, date: entry.d ?? null };
 }
 
 export interface TrialHit {

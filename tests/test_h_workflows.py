@@ -297,6 +297,26 @@ def test_通知路徑不依賴既有的_label():
         assert "--force" in run, f"{path.name} 的 label 建立不是冪等的"
 
 
+def test_f1_的真實量測有進部署_gate():
+    """**F1 的 oracle 是部署端實收位元組，不是建置期估算。**
+
+    M4 稽核發現：`measure-f1-live.mjs` 寫好了卻沒有被任何 workflow 呼叫，
+    於是 F1 的四條量測邊界在 gate 層級一條都沒被強制——綠燈只代表
+    `measure_payload.py` 的建置期估算通過，而那支腳本自己寫明它不能宣告 F1 通過。
+    """
+    steps = load(DEPLOY)["jobs"]["deploy"]["steps"]
+    runs = [s.get("run", "") for s in steps]
+    assert any("measure-f1-live.mjs" in r for r in runs), "部署鏈沒有跑真實部署的 F1 量測"
+
+    # 必須在部署**之後**——量的是線上那一份
+    deploy_i = next(i for i, r in enumerate(runs) if "pages deploy" in r)
+    f1_i = next(i for i, r in enumerate(runs) if "measure-f1-live.mjs" in r)
+    assert deploy_i < f1_i, "F1 量測須在部署之後"
+
+    # 報告要留成 artifact（F1：列出納入檔案清單與總和寫入 CI artifact）
+    assert any("reports/" in str(s.get("with", {}).get("path", "")) for s in steps), "F1 報告未留存"
+
+
 def test_部署失敗會開_issue():
     steps = load(DEPLOY)["jobs"]["deploy"]["steps"]
     notify = next(s for s in steps if s.get("if") == "failure()")

@@ -60,6 +60,9 @@ const ALLOWED_STATE_CONCEPTS = [
   "近似的計畫書編號",
   "合併自僅空白不同的寫法",
   "資料日期不明的紀錄",
+  // §7.4／E8：`?protocol=` 的兩種拒絕，**刻意分開**
+  "查詢值不是計畫書編號",
+  "本站沒有該計畫書編號",
   // §6.6：欄位級的解析結果
   "來源未提供",
   "來源值不在已知清單內",
@@ -86,12 +89,24 @@ type Concept = (typeof ALLOWED_STATE_CONCEPTS)[number];
  * 會作出狀態陳述的文句表。**`SCOPE` 不在其中**——它講的是搜尋範圍，
  * 不是對試驗或資料的判斷。納進來只會讓對帳變成形式。
  */
+/**
+ * 代入一個代表值呼叫文句函式。**有些文句吃陣列（如 `hitFromOlder` 的日期清單）**，
+ * 統一餵字串會在那些上面丟 `TypeError`——先試陣列再退回字串，兩型都涵蓋。
+ */
+function callCopy(fn: (x: never) => string): string {
+  try {
+    return fn(["2026/09/18"] as never);
+  } catch {
+    return fn("2026/09/18" as never);
+  }
+}
+
 function claimTables(): Record<string, string> {
   const out: Record<string, string> = {};
   const add = (prefix: string, table: Record<string, unknown>) => {
     for (const [k, v] of Object.entries(table)) {
       out[`${prefix}.${k}`] =
-        typeof v === "function" ? String((v as (x: never) => string)("2026/09/18" as never)) : String(v);
+        typeof v === "function" ? String(callCopy(v as (x: never) => string)) : String(v);
     }
   };
   add("LABEL", LABEL);
@@ -117,6 +132,8 @@ const CONCEPT_OF: Record<string, Concept> = {
   "LABEL.nearDuplicate": "近似的計畫書編號",
   "LABEL.mergedVariants": "合併自僅空白不同的寫法",
   "LABEL.undatedRecords": "資料日期不明的紀錄",
+  "LABEL.protocolRejected": "查詢值不是計畫書編號",
+  "LABEL.protocolNotFound": "本站沒有該計畫書編號",
   "FILTER_SPECIAL.unprovided": "來源未提供",
   "FILTER_SPECIAL.conflicted": "同日多筆資料不一致",
   "FIELD_NOTE.categoricalUnprovided": "來源未提供",
@@ -166,7 +183,7 @@ function ownCopy(): string[] {
   for (const table of sources) {
     for (const v of Object.values(table)) {
       if (typeof v === "string") out.push(v);
-      else if (typeof v === "function") out.push(String((v as (x: never) => string)("2026/09/18" as never)));
+      else if (typeof v === "function") out.push(callCopy(v as (x: never) => string));
     }
   }
   return out;
@@ -342,7 +359,7 @@ describe("E4：來源資料可到達的輸出 surface 封閉 inventory", () => {
       protocolNonIdentifier: false,
     } as unknown as Trial;
     const card = renderCard(
-      { trial: fake, hits: [{ recordId: t.searchShortLatest[0]!.r, fieldIndexes: [0] }] },
+      { trial: fake, hits: [{ recordId: t.searchShortLatest[0]!.r, fieldIndexes: [0], date: null }] },
       { detailHref: href },
     );
     expectInert(card, XSS);

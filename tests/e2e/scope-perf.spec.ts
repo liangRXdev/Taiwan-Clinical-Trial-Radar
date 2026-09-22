@@ -112,6 +112,13 @@ test.describe("D7：scope 切換", () => {
     await page.goto("/?q=test");
     await page.waitForSelector(".scope");
 
+    // 失敗前的三個事實：URL、控制項狀態、結果集
+    const beforeUrl = await page.evaluate(() => location.search);
+    const beforeChecked = await page.locator("#scope-history-all").isChecked();
+    const beforeIds = await page
+      .locator("article.card--result")
+      .evaluateAll((n) => n.map((x) => x.getAttribute("data-trial") ?? ""));
+
     // 讓按需檔 404
     await page.route("**/search-short-all.*.json", (route) => route.fulfill({ status: 404 }));
 
@@ -120,8 +127,40 @@ test.describe("D7：scope 切換", () => {
 
     const msg = await page.locator(".scope .alert--error").textContent();
     expect(msg).toContain("已退回原本的搜尋範圍");
-    // 仍顯示目前 scope，使用者看得出自己在哪
     await expect(page.locator(".scope__current")).toBeVisible();
+
+    // **以下四條才是「真的退回」。**
+    // 舊版只驗上面那句話，而它是 `SCOPE.loadFailed` 的寫死字串——
+    // 錯誤分支一渲染就必然成立，與有沒有退回無關（一條恆真的斷言）。
+    expect(await page.evaluate(() => location.search), "URL 須退回").toBe(beforeUrl);
+    expect(await page.locator("#scope-history-all").isChecked(), "控制項狀態須退回").toBe(
+      beforeChecked,
+    );
+    const afterIds = await page
+      .locator("article.card--result")
+      .evaluateAll((n) => n.map((x) => x.getAttribute("data-trial") ?? ""));
+    expect(afterIds, "結果集須與失敗前完全相同（含順序）").toEqual(beforeIds);
+  });
+
+  test("**部分載入失敗不得以半套索引產生結果**", async ({ page }) => {
+    // `all`+`all` 需要三個檔。讓第一個成功、第二個 404——
+    // 舊版 `results()` 疊代整個 cache，於是那個成功的檔會繼續參與搜尋，
+    // 使用者拿到「比預設多、比目標少」的結果集，而畫面上沒有任何訊號。
+    await page.goto("/?q=test");
+    await page.waitForSelector(".scope");
+    const beforeIds = await page
+      .locator("article.card--result")
+      .evaluateAll((n) => n.map((x) => x.getAttribute("data-trial") ?? ""));
+
+    await page.route("**/search-long-latest.*.json", (route) => route.fulfill({ status: 404 }));
+    await page.locator("#scope-fields-all").check();
+    await page.locator("#scope-history-all").check();
+    await page.waitForSelector(".scope .alert--error");
+
+    const afterIds = await page
+      .locator("article.card--result")
+      .evaluateAll((n) => n.map((x) => x.getAttribute("data-trial") ?? ""));
+    expect(afterIds, "結果集須退回預設 scope 的樣子").toEqual(beforeIds);
   });
 
   test("URL 的 fields／history 可重現同一結果集", async ({ page }) => {

@@ -16,7 +16,12 @@
  * readiness 以**功能性 probe** 判定：執行一個固定查詢並取得正確結果集才算就緒。
  *
  * 用法：
- *     node scripts/measure-f1-live.mjs https://taiwan-clinical-trial-radar.pages.dev
+ *     node scripts/measure-f1-live.mjs <部署網址> [報告輸出路徑]
+ *
+ * **已知限制（明寫而非隱瞞）**：位元組來自 readiness 之後對同一 URL 的第二次請求，
+ * 是冷啟動 response 的**代理**而非本體。CDN 若對兩次請求給不同編碼，數字會偏離。
+ * 直接量瀏覽器收到的位元組需要 CDP 的 `encodedDataLength`，但那含 header
+ * 且跨瀏覽器不可比——規格第 1 條明文禁止。兩害相權取此。
  */
 
 import { get } from "node:https";
@@ -89,13 +94,18 @@ if (!Number.isFinite(hits) || hits <= 0) {
   process.exit(1);
 }
 
-const urls = [...new Set(requested)];
 await browser.close();
 
+// **不去重。** 規格說的是「全部 network responses」——同一個 URL 被請求兩次就是
+// 兩份位元組，使用者兩次都要付。`new Set()` 會讓重複請求靜默漏算。
+// 同 URL 只實際抓一次，再依次數計入，避免對部署端多打不必要的流量。
+const counts = new Map();
+for (const url of requested) counts.set(url, (counts.get(url) ?? 0) + 1);
+
 const rows = [];
-for (const url of urls) {
+for (const [url, times] of counts) {
   const r = await encodedBytes(url, base);
-  rows.push({ url, ...r });
+  rows.push({ url, times, bytes: r.bytes * times, perResponse: r.bytes, status: r.status, encoding: r.encoding });
 }
 
 rows.sort((a, b) => b.bytes - a.bytes);
@@ -104,9 +114,41 @@ const total = rows.reduce((n, r) => n + r.bytes, 0);
 console.log(`readiness probe：「${PROBE_QUERY}」命中 ${hits} 個試驗\n`);
 for (const r of rows) {
   const short = r.url.replace(base, "").replace(/^https:\/\//, "") || "/";
-  console.log(`  ${String(r.bytes).padStart(9)}  ${String(r.encoding).padEnd(9)} ${r.status}  ${short}`);
+  const n = r.times > 1 ? ` ×${r.times}` : "";
+  console.log(`  ${String(r.bytes).padStart(9)}  ${String(r.encoding).padEnd(9)} ${r.status}  ${short}${n}`);
 }
 console.log(`\n  ${String(total).padStart(9)}  TOTAL（門檻 ${THRESHOLD_BYTES}，餘 ${THRESHOLD_BYTES - total}）`);
+
+// CI artifact（F1 要求「列出納入檔案清單與總和寫入 CI artifact」）
+const outPath = process.argv[3];
+if (outPath) {
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const { dirname } = await import("node:path");
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(
+    outPath,
+    JSON.stringify(
+      {
+        note:
+          "對真實部署的冷啟動量測，F1 的唯一有效 oracle。"
+          + "**已知限制**：位元組來自 readiness 後對同一 URL 的第二次請求，"
+          + "是冷啟動 response 的代理而非本體；CDN 若對兩次請求給不同編碼，數字會偏離。",
+        base,
+        probeQuery: PROBE_QUERY,
+        probeHits: hits,
+        thresholdBytes: THRESHOLD_BYTES,
+        totalBytes: total,
+        headroomBytes: THRESHOLD_BYTES - total,
+        exceedsThreshold: total > THRESHOLD_BYTES,
+        responses: rows,
+      },
+      null,
+      1,
+    ),
+    "utf-8",
+  );
+  console.log(`\n報告已寫入 ${outPath}`);
+}
 
 if (total > THRESHOLD_BYTES) {
   console.error(`\nF1 不合格：超出 ${total - THRESHOLD_BYTES} bytes。`);

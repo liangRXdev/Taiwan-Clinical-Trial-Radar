@@ -221,6 +221,63 @@ test.describe("D4：每個維度各一組，含 canonical URL 與 reload", () =>
   });
 });
 
+test.describe("§7.4／E8：`?protocol=` 的 canonical 導向與拒收", () => {
+  test("命中 → **導向 canonical `?trial=`**，URL 不留 protocol 參數", async ({ page }) => {
+    // 先從瀏覽頁取一個真實的計畫書編號與其 trialId
+    const target = await page.evaluate(async () => {
+      const m = await (await fetch("data/manifest.json")).json();
+      const idx = await (await fetch(`data/${m.files.trialsIndex.path}`)).json();
+      const t = idx.trials.find(
+        (x: { protocolNonIdentifier: boolean; protocolRaw: string[] }) =>
+          !x.protocolNonIdentifier && x.protocolRaw.length > 0,
+      );
+      return { id: t.id as string, protocol: t.protocolRaw[0] as string };
+    });
+
+    await page.goto(`/?protocol=${encodeURIComponent(target.protocol)}`);
+    await expect(page.locator("#detail")).toBeVisible();
+
+    const url = await page.evaluate(() => location.search);
+    expect(url).toBe(`?trial=${encodeURIComponent(target.id)}`);
+    expect(url).not.toContain("protocol=");
+  });
+
+  test("大小寫／前後空白差異仍導向同一個 canonical URL", async ({ page }) => {
+    const target = await page.evaluate(async () => {
+      const m = await (await fetch("data/manifest.json")).json();
+      const idx = await (await fetch(`data/${m.files.trialsIndex.path}`)).json();
+      const t = idx.trials.find(
+        (x: { protocolNonIdentifier: boolean; protocolRaw: string[] }) =>
+          !x.protocolNonIdentifier && x.protocolRaw.length > 0,
+      );
+      return { id: t.id as string, protocol: t.protocolRaw[0] as string };
+    });
+
+    await page.goto(`/?protocol=${encodeURIComponent(`  ${target.protocol.toLowerCase()}  `)}`);
+    await expect(page.locator("#detail")).toBeVisible();
+    expect(await page.evaluate(() => location.search)).toBe(
+      `?trial=${encodeURIComponent(target.id)}`,
+    );
+  });
+
+  test("**non-identifier 的值不接受**，且訊息與「查無結果」不同", async ({ page }) => {
+    await page.goto("/?protocol=%E7%B3%BB%E7%B5%B1%E6%B8%AC%E8%A9%A6"); // 系統測試
+    await expect(page.locator(".alert--error")).toBeVisible();
+    const msg = (await page.locator(".alert--error").first().textContent()) ?? "";
+    expect(msg).toContain("不是計畫書編號");
+    expect(msg).not.toContain("不代表該試驗不存在");
+    // **不得靜默當成沒給**：不能就這樣顯示未篩選的瀏覽頁而無任何訊息
+    expect(await page.locator("#detail").count()).toBe(0);
+  });
+
+  test("形狀合法但查無 → **明說不代表該試驗不存在**", async ({ page }) => {
+    await page.goto("/?protocol=NOSUCHPROTOCOL-9999");
+    await expect(page.locator(".alert--error")).toBeVisible();
+    const msg = (await page.locator(".alert--error").first().textContent()) ?? "";
+    expect(msg).toContain("不代表該試驗不存在");
+  });
+});
+
 test.describe("D5：呈現層不存在 trial-status 維度", () => {
   test("**DOM 控制項**恰為六個維度，沒有第七個", async ({ page }) => {
     const dims = await page

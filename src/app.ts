@@ -16,7 +16,8 @@ import {
   searchLatestShort,
   type TrialHit,
 } from "./lib/search.js";
-import { filesToLoad, type Scope, type SearchFileKey } from "./lib/scope.js";
+import { lookupProtocol } from "./lib/protocol.js";
+import { filesFor, filesToLoad, scopeKey, type Scope, type SearchFileKey } from "./lib/scope.js";
 import type { Manifest, SearchFile, Shard, Stats, TrialsIndex } from "./lib/types.js";
 import { buildUrl, isBrowsing, parseUrl, type AppState } from "./lib/urlState.js";
 import { renderCard } from "./ui/card.js";
@@ -104,12 +105,32 @@ export class App {
     );
   }
 
-  private async onNavigate(): Promise<void> {
-    await this.ensureScopeFiles(this.state.scope);
+  /**
+   * §8.5：載入失敗時**真的退回**上一個 scope——state、URL、結果集三者一起。
+   *
+   * 舊版丟棄 `ensureScopeFiles` 的回傳值，於是 `state.scope` 停在新 scope、
+   * URL 停在新 scope，而畫面上那句「已退回原本的搜尋範圍」是寫死的字串。
+   * 使用者看到的是一個宣稱已退回、實際沒退回、且可能以部分索引產生的結果集。
+   */
+  private async onNavigate(prev: Scope | null = null): Promise<void> {
+    const ok = await this.ensureScopeFiles(this.state.scope);
+    if (!ok && prev !== null && scopeKey(prev) !== scopeKey(this.state.scope)) {
+      this.state = { ...this.state, scope: prev };
+      // `replaceState` 而非 `pushState`：退回不是一次新的導覽，
+      // 否則上一頁會把使用者送回那個載不起來的 scope。
+      history.replaceState(null, "", buildUrl(this.state) || location.pathname);
+    }
     this.render();
   }
 
-  /** §8.5：載入失敗則**退回上一個 scope 並說明**，不得靜默維持舊結果集。 */
+  /**
+   * §8.5：載入失敗則**退回上一個 scope 並說明**，不得靜默維持舊結果集。
+   *
+   * **成功載入且通過版本驗證的檔案留在 cache**（使用者定案 2026-09-22）：
+   * 下次再切到需要它的 scope 就不必重載。留著是安全的——`results()` 只讀
+   * `filesFor(目前 scope)`，cache 裡多出來的檔案不會參與搜尋，
+   * 因此不影響畫面、scope、URL 或結果集。
+   */
   private async ensureScopeFiles(scope: Scope): Promise<boolean> {
     const need = filesToLoad(scope, new Set(this.searchFiles.keys()));
     for (const key of need) {
@@ -140,9 +161,10 @@ export class App {
   private navigate(next: AppState): void {
     // 條件一變就回到第一批：沿用舊的 shown 會讓新結果一次畫出上百張
     this.shown = PAGE_SIZE;
+    const prev = this.state.scope;
     this.state = next;
     history.pushState(null, "", buildUrl(next) || location.pathname);
-    void this.onNavigate();
+    void this.onNavigate(prev);
   }
 
   private results(): TrialHit[] {
@@ -159,7 +181,14 @@ export class App {
       if (fields === "short" && history === "latest") {
         groups.push(searchLatestShort(trials, terms));
       } else {
-        for (const [, file] of this.searchFiles) {
+        // **只讀目前 scope 所需的檔案**，不疊代整個 cache。
+        // 疊代 cache 會讓「曾經載入過但已不屬於目前 scope」的檔案繼續參與搜尋——
+        // 退回 scope 之後結果集卻沒退回，那是最難察覺的一種漏報／多報。
+        for (const key of filesFor(this.state.scope)) {
+          const file = this.searchFiles.get(key);
+          // 缺檔代表 scope 與 cache 不一致（正常流程下不會發生）。**不靜默略過**：
+          // 少一個檔就是少一批 record，使用者看到的是「查無資料」。
+          if (file === undefined) throw new Error(`scope 需要 ${key} 但未載入`);
           groups.push(searchEntries(trials, file.records, terms));
         }
         if (history === "latest" && fields === "all") {
@@ -181,8 +210,37 @@ export class App {
     }
   }
 
+  /**
+   * §7.4／E8：`?protocol=` 以 identity 正規化後比對並**導向 canonical**。
+   *
+   * 舊版只有 parse／build——URL 收下這個參數、原樣保留，然後**什麼都不做**。
+   * 那比完全不支援更糟：使用者以為查了，實際看到的是未篩選的瀏覽頁。
+   *
+   * 命中 → `replaceState` 換成 `?trial=<id>`（canonical 形式，不留 `protocol`）。
+   * 不接受或查無 → 顯示對應訊息，**兩者分開**，並保留原參數不改寫，
+   * 使用者才看得出剛才那個網址發生了什麼事。
+   */
+  private resolveProtocol(): void {
+    const raw = this.state.protocol;
+    if (raw === null) return;
+
+    const result = lookupProtocol(this.index.trials, raw);
+    if (result.kind === "match") {
+      this.state = { ...this.state, protocol: null, trial: result.trialId };
+      history.replaceState(null, "", buildUrl(this.state) || location.pathname);
+      return;
+    }
+    this.errors.set(
+      "protocol",
+      result.kind === "rejected" ? LABEL.protocolRejected(raw) : LABEL.protocolNotFound(raw),
+    );
+    // 值不被接受時**不得沿用它去搜尋**，把它清掉但保留 URL 原樣
+    this.state = { ...this.state, protocol: null };
+  }
+
   private render(): void {
     this.validateRanges();
+    this.resolveProtocol();
     if (this.state.trial !== null) {
       void this.renderDetailPage(this.state.trial);
       return;

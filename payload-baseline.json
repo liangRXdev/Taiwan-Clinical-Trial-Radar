@@ -1,0 +1,21 @@
+{
+ "_about": "§11 F2 的按需檔案壓縮基線。**以檔案為單位，不以 scope 為單位**——scope 的成本由 §8.5 的集合差導出，在這裡再記一次必然產生「總量還是增量」的歧義。",
+ "_discipline": "這些是建置期 brotli q11 值，**不計入 F1**（F1 只量部署端實收位元組）。超出基線 20% 時 CI 告警而非失敗：上游資料長大是正常的，要的是有人看到並決定，不是擋住月更新。",
+ "_recordedAt": "2026-09-22",
+ "_recordedFrom": "ef785e7addff8596",
+ "files": {
+  "searchShortAll": {
+   "brotliBytes": 712838,
+   "bytes": 7636171
+  },
+  "searchLongLatest": {
+   "brotliBytes": 1513104,
+   "bytes": 7835184
+  },
+  "searchLongAll": {
+   "brotliBytes": 1884858,
+   "bytes": 20297035
+  }
+ },
+ "warnRatio": 1.2
+}

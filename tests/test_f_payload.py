@@ -144,3 +144,49 @@ def test_tier0_subset_is_exactly_three_files(a_core_rows, build_date):
     assert files["searchShortAll"]["path"] not in tier0
     assert files["searchLongLatest"]["path"] not in tier0
     assert files["searchLongAll"]["path"] not in tier0
+
+
+# ───────────────────────────────────────────────────────── F2
+
+def test_f2_基線檔存在且以檔案為單位():
+    """§11 F2：**以檔案為單位，不以 scope 為單位**。
+
+    scope 的成本由 §8.5 的集合差導出，在基線裡再記一次 scope 數字必然產生
+    「總量還是增量」的歧義——v0.8 就是這樣同時存在兩個口徑的。
+    """
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    baseline = json.loads((root / "payload-baseline.json").read_text(encoding="utf-8"))
+
+    assert set(baseline["files"]) == {"searchShortAll", "searchLongLatest", "searchLongAll"}
+    # 鍵是檔案名而不是 scope 名（`short|all` 之類）
+    for key in baseline["files"]:
+        assert "|" not in key, f"{key} 看起來是 scope 而不是檔案"
+    assert baseline["warnRatio"] == 1.20
+
+
+def test_f2_超出基線_20_百分比會告警而不是失敗():
+    """**告警不是失敗**：上游資料長大是正常的，要的是有人看到並決定，不是擋住月更新。"""
+    import json
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root))
+    from scripts.measure_payload import check_on_demand  # noqa: PLC0415
+
+    manifest = json.loads((root / "public" / "data" / "manifest.json").read_text(encoding="utf-8"))
+    result = check_on_demand(manifest)
+    assert result["status"] == "ok"
+    assert len(result["files"]) == 3
+
+    # 目前應無告警（基線就是現況）；ratio 全部在 1.0 附近
+    for row in result["files"]:
+        assert 0.9 <= row["ratio"] <= 1.1, row
+
+    # **反向哨兵**：把基線壓到現況的一半，三個檔都必須告警
+    shrunk = {r["file"]: r["brotliBytes"] // 2 for r in result["files"]}
+    fired = [r["file"] for r in result["files"] if r["brotliBytes"] / shrunk[r["file"]] > 1.20]
+    assert sorted(fired) == sorted(shrunk), "基線減半後三個檔都該告警"

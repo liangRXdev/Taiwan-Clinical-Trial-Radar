@@ -120,6 +120,23 @@ jobs:
           echo "部署啟用逾時：線上 ${LIVE} ≠ 本次 ${EXPECTED}" >&2
           exit 1
 
+      - name: F1 量測（對真實部署，唯一有效的 oracle）
+        # **這一步才是 F1 的 gate。** `measure_payload.py` 只是建置期估算的
+        # 單向 fail-closed，它自己寫明「通過不代表 F1 通過」——在這一步接上之前，
+        # F1 的四條量測邊界在 CI／部署鏈上一條都沒有被強制過。
+        run: |
+          set -euo pipefail
+          npx --yes playwright@1.63.0 install --with-deps chromium
+          node scripts/measure-f1-live.mjs "https://${PROJECT}.pages.dev" reports/f1-live.json
+
+      - name: 上傳 payload 報告
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: payload-${{ github.run_id }}
+          path: reports/
+          retention-days: 90
+
       - name: 失敗時開 issue
         # 部署失敗不回退、不混合：**前一個成功部署仍為 authoritative**（§9.2.3）。
         # 這裡只負責讓人知道，不做任何補償動作。
