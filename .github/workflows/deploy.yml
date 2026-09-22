@@ -129,6 +129,11 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           VERSION: ${{ steps.target.outputs.version }}
         run: |
+          # **label 先 --force 建起來**：`gh issue create --label` 在 label 不存在時
+          # 整個指令失敗，而這是**失敗通知路徑**——它壞掉的時機正好是沒有人在看的時候。
+          # 2026-09-22 首次實跑就踩到（`could not add label: 'deploy' not found`）。
+          # `--force` 在已存在時回 0，冪等。
+          gh label create deploy --color B60205 --description "部署鏈" --force
           gh issue create \
             --title "部署失敗（commit ${TARGET_SHA}）" \
             --label "deploy" \

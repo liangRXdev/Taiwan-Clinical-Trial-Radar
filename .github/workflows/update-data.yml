@@ -109,6 +109,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          # **label 先 --force 建起來**：`gh issue create --label` 在 label 不存在時
+          # 整個指令失敗，而這是**失敗通知路徑**——它壞掉的時機正好是沒有人在看的時候。
+          # 2026-09-22 部署鏈首次實跑踩到同一個坑（`could not add label`），這裡一併堵。
+          gh label create data-update --color 0E8A16 --description "月更新資料" --force
           gh issue create \
             --title "月更新失敗（run ${{ github.run_id }}）" \
             --label "data-update" \

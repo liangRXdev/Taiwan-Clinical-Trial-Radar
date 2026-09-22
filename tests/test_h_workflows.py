@@ -278,6 +278,25 @@ def test_部署後驗證線上版本():
     assert "exit 1" in steps[verify_i]["run"], "版本不符時必須 fail-closed"
 
 
+def test_通知路徑不依賴既有的_label():
+    """**失敗通知壞掉的時機，正好是沒有人在看的時候。**
+
+    2026-09-22 部署鏈首次實跑：`gh issue create --label deploy` 因為 repo 沒有那個
+    label 而整個指令失敗，通知完全沒發出去。兩個 workflow 的通知步驟因此都要先
+    `gh label create --force`（冪等）。
+    """
+    for path, job in ((DEPLOY, "deploy"), (UPDATE, "update")):
+        notify = next(s for s in load(path)["jobs"][job]["steps"] if s.get("if") == "failure()")
+        run = notify["run"]
+        assert "gh issue create" in run, path.name
+        label = re.search(r'--label "([^"]+)"', run)
+        assert label is not None, f"{path.name} 的通知沒有指定 label"
+        assert f"gh label create {label.group(1)}" in run, (
+            f"{path.name} 用了 label `{label.group(1)}` 卻沒有先建立它"
+        )
+        assert "--force" in run, f"{path.name} 的 label 建立不是冪等的"
+
+
 def test_部署失敗會開_issue():
     steps = load(DEPLOY)["jobs"]["deploy"]["steps"]
     notify = next(s for s in steps if s.get("if") == "failure()")
