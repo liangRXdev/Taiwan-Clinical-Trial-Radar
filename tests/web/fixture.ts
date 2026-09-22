@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { densifyIndex } from "../../src/lib/schema.js";
 import type { Manifest, Shard, Stats, SearchFile, TrialsIndex } from "../../src/lib/types.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -20,7 +21,12 @@ function readJson<T>(relPath: string): T {
 }
 
 export const manifest = readJson<Manifest>("manifest.json");
-export const index = readJson<TrialsIndex>(manifest.files.trialsIndex.path);
+// **與 app.ts 走同一個還原函式**：測試若讀稀疏原文而 app 讀稠密的，
+// 兩邊會對同一份 fixture 得出不同結論，而那種落差不會有任何測試看得見。
+export const index = densifyIndex(
+  readJson<TrialsIndex>(manifest.files.trialsIndex.path),
+  manifest.schemaVersion,
+);
 export const stats = readJson<Stats>(manifest.files.stats.path);
 export const trials = index.trials;
 

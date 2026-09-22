@@ -357,7 +357,8 @@ def test_c6_long_text_raw_variants_absent_from_every_output(a_core_rows, build_d
         # 只有 9 個卡片欄位的 flags 可以帶它
         for entry in payload.get("trials", []):
             for field, value in entry["displayFields"].items():
-                if "rawVariants" in value["flags"]:
+                # schemaVersion 2：`flags` 為空時被省略（§9.3.3）
+                if "rawVariants" in value.get("flags", []):
                     assert field not in LONG_TEXT_FIELDS
 
 
@@ -371,6 +372,6 @@ def test_c6_short_field_raw_variants_still_present(a_core_rows, build_date):
         (t["id"], f)
         for t in out.logical["trials-index.json"]["trials"]
         for f, v in t["displayFields"].items()
-        if "rawVariants" in v["flags"]
+        if "rawVariants" in v.get("flags", [])
     ]
     assert found, "卡片欄位的 rawVariants 不得一併消失"

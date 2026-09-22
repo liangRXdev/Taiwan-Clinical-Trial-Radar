@@ -22,6 +22,7 @@ from .artifacts import (
     artifact_digest,
     brotli_size,
     dataset_version,
+    field_typed,
     manifest_paths,
 )
 from .errors import ErrorCode, PipelineError
@@ -204,10 +205,11 @@ def check_invariants(on_disk: dict[str, bytes], manifest: dict) -> InvariantRepo
                     conflicted += 1
                     continue
                 value = t["displayFields"].get(field)
-                if value is None or value["typed"] is None:
+                typed = None if value is None else field_typed(value)
+                if typed is None:
                     unprovided += 1
                 else:
-                    buckets[value["typed"]] = buckets.get(value["typed"], 0) + 1
+                    buckets[typed] = buckets.get(typed, 0) + 1
             declared_counts = {b["value"]: b["count"] for b in facet["buckets"]}
             if (
                 declared_counts != buckets

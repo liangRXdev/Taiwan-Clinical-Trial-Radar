@@ -17,6 +17,7 @@ import {
   type TrialHit,
 } from "./lib/search.js";
 import { lookupProtocol } from "./lib/protocol.js";
+import { densifyIndex } from "./lib/schema.js";
 import { filesFor, filesToLoad, scopeKey, type Scope, type SearchFileKey } from "./lib/scope.js";
 import type { Manifest, SearchFile, Shard, Stats, TrialsIndex } from "./lib/types.js";
 import { buildUrl, isBrowsing, parseUrl, type AppState } from "./lib/urlState.js";
@@ -77,9 +78,11 @@ export class App {
   async start(): Promise<void> {
     try {
       this.manifest = await fetchJson<Manifest>("manifest.json");
-      this.index = await fetchJson<TrialsIndex>(this.manifest.files.trialsIndex.path);
+      const rawIndex = await fetchJson<TrialsIndex>(this.manifest.files.trialsIndex.path);
       this.stats = await fetchJson<Stats>(this.manifest.files.stats.path);
-      assertVersion(this.index, this.manifest, "trials-index");
+      assertVersion(rawIndex, this.manifest, "trials-index");
+      // schemaVersion 2 起 `displayFields` 是稀疏的；還原集中在這一處（§9.3.3）
+      this.index = densifyIndex(rawIndex, this.manifest.schemaVersion);
       assertVersion(this.stats, this.manifest, "stats");
     } catch (e) {
       this.fatal(e);

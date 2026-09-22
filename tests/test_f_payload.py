@@ -190,3 +190,72 @@ def test_f2_超出基線_20_百分比會告警而不是失敗():
     shrunk = {r["file"]: r["brotliBytes"] // 2 for r in result["files"]}
     fired = [r["file"] for r in result["files"] if r["brotliBytes"] / shrunk[r["file"]] > 1.20]
     assert sorted(fired) == sorted(shrunk), "基線減半後三個檔都該告警"
+
+
+# ───────────────────────────────────────────── schemaVersion 2 的稀疏 displayFields
+
+def test_稀疏規則_typed_等於_raw_時省略(a_core_rows, build_date):
+    """§9.3.3：**只省「可由 raw 無歧義還原」的資訊**。"""
+    from trial_radar.artifacts import build_artifacts
+    from trial_radar.model import build_trials
+
+    out = build_artifacts(build_trials(list(a_core_rows.values()), build_date), **BUILD_KW)
+    trials = out.logical["trials-index.json"]["trials"]
+
+    omitted = kept_null = kept_diff = 0
+    for t in trials:
+        for field, v in t["displayFields"].items():
+            assert "raw" in v, f"{t['id']}/{field} 缺 raw"
+            if "typed" not in v:
+                # 省略的前提：typed 恰等於 raw（同型別同值）
+                omitted += 1
+            elif v["typed"] is None:
+                kept_null += 1
+            else:
+                kept_diff += 1
+            # flags 為空時不得出現
+            assert v.get("flags") != [], f"{t['id']}/{field} 的空 flags 未省略"
+
+    # 三種情形都要在 fixture 裡真的出現，否則這條測不出差別
+    assert omitted > 0, "沒有任何欄位被省略，規則等於沒生效"
+    assert kept_null > 0, "沒有 typed=null 的欄位，最危險的那一格沒被涵蓋"
+    assert kept_diff > 0, "沒有 typed≠raw 的欄位"
+
+
+def test_稀疏還原_typed_為_null_不得代入_raw(a_core_rows, build_date):
+    """**這是 `or` / `??` 會寫錯的那一格。**"""
+    from trial_radar.artifacts import build_artifacts, field_typed
+    from trial_radar.model import build_trials
+
+    out = build_artifacts(build_trials(list(a_core_rows.values()), build_date), **BUILD_KW)
+    trials = out.logical["trials-index.json"]["trials"]
+
+    nulls = [
+        (t["id"], f, v)
+        for t in trials
+        for f, v in t["displayFields"].items()
+        if "typed" in v and v["typed"] is None
+    ]
+    assert nulls, "fixture 須有 typed=null 的欄位"
+    for tid, field, v in nulls:
+        assert field_typed(v) is None, f"{tid}/{field} 被代入了 raw"
+        # 反向：天真的寫法會給出 raw
+        assert (v.get("typed") or v["raw"]) == v["raw"], "這正是不能用 `or` 的理由"
+
+
+def test_稀疏還原_與稠密結果等價(a_core_rows, build_date):
+    """還原後的值必須與序列化前的 `FieldValue` 一致。"""
+    from trial_radar.artifacts import build_artifacts, field_flags, field_typed
+    from trial_radar.model import build_trials
+
+    trials_model = build_trials(list(a_core_rows.values()), build_date)
+    out = build_artifacts(trials_model, **BUILD_KW)
+    by_id = {t.id: t for t in trials_model}
+
+    for t in out.logical["trials-index.json"]["trials"]:
+        model = by_id[t["id"]]
+        for field, v in t["displayFields"].items():
+            src = model.display_fields[field]
+            assert field_typed(v) == src.typed, f"{t['id']}/{field} typed 還原不符"
+            assert field_flags(v) == list(src.flags), f"{t['id']}/{field} flags 還原不符"
+            assert v["raw"] == src.raw

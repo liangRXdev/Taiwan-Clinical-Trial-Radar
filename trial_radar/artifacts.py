@@ -22,7 +22,13 @@ from .identity import sha256hex
 from .model import Trial
 from .normalize import search_normalize
 
-SCHEMA_VERSION = 1
+#: §9.3.1 的 schema 版本。
+#:
+#: **2 起 `displayFields` 的值物件為稀疏**（`typed` 等於 `raw` 時省略、`flags` 空時省略）。
+#: 依 §9.3 的規則，移除欄位一律 bump——而首次 promotion 已於 2026-09-22 完成，
+#: 「尚無可被外部讀取的 v1 artifact」那條豁免已經失效。
+#: 舊版前端讀到 v2 會把缺席的 `typed` 當成 `undefined`，那正是 bump 要擋的事。
+SCHEMA_VERSION = 2
 SOURCE_DATASET_ID = 205
 
 # §9.3.5：facet 名單為封閉集合，恰為三個。E2 以本清單為 facet widget 的唯一 oracle 來源。
@@ -86,8 +92,42 @@ def artifact_digest(published: dict[str, bytes]) -> str:
 
 
 def _field_json(value) -> object:
-    """FieldValue → §9.3.3 的 `{raw, typed, flags}` 三元組。"""
-    return {"raw": value.raw, "typed": value.typed, "flags": list(value.flags)}
+    """FieldValue → §9.3.3 的 `{raw, typed?, flags?}`（schemaVersion 2 起為**稀疏**）。
+
+    兩條省略規則，**都只省「可由 raw 無歧義還原」的資訊**：
+
+    - `typed` **恰等於** `raw`（同型別、同值）時省略。文字欄位大多如此。
+    - `flags` 為空時省略。
+
+    **`typed` 為 `None` 時一律保留**，那是有意義的狀態（未提供／無法解析／超界），
+    不是「與 raw 相同」。把它省掉會讓讀取端誤以為 typed 就是 raw——
+    §6.6 的整套 sentinel 語意會在那一步全部消失，而畫面上看不出來。
+
+    量測（2026-09-22，brotli q5）：`trials-index` 1,146,410 → 1,053,115，省 8.1%。
+    Tier 0 的餘裕因此從 3.2% 回到約 11%。這是**純表示法**優化，
+    不改變任何使用者可見行為。
+    """
+    out: dict = {"raw": value.raw}
+    if value.typed != value.raw or not isinstance(value.typed, str):
+        out["typed"] = value.typed
+    if value.flags:
+        out["flags"] = list(value.flags)
+    return out
+
+
+def field_typed(value: dict):
+    """讀 schemaVersion 2 的稀疏 `displayFields` 值物件，取回 `typed`。
+
+    **只有「鍵不存在」才代入 `raw`。** `typed` 為 `None` 是有意義的狀態
+    （未提供／無法解析／超界／衝突），不是「與 raw 相同」——用 `get("typed") or raw`
+    之類的寫法會把整套 sentinel 語意吃掉，而下游看不出來。
+    """
+    return value["typed"] if "typed" in value else value["raw"]
+
+
+def field_flags(value: dict) -> list[str]:
+    """同上，取回 `flags`（稀疏格式中空陣列被省略）。"""
+    return value.get("flags", [])
 
 
 def _trial_json(t: Trial) -> dict:

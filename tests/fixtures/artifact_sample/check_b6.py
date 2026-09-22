@@ -173,10 +173,11 @@ def validate(on_disk, manifest):
                     conflicted += 1
                     continue
                 df = t["displayFields"].get(field)
-                if df is None or df["typed"] is None:
+                typed = None if df is None else (df["typed"] if "typed" in df else df["raw"])
+                if typed is None:
                     unprovided += 1
                 else:
-                    counts[df["typed"]] = counts.get(df["typed"], 0) + 1
+                    counts[typed] = counts.get(typed, 0) + 1
             declared_counts = {b["value"]: b["count"] for b in facet["buckets"]}
             if (declared_counts != counts or facet["unprovided"] != unprovided
                     or facet["conflicted"] != conflicted):
