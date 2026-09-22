@@ -28,6 +28,10 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
 CI = WORKFLOWS / "ci.yml"
 UPDATE = WORKFLOWS / "update-data.yml"
+DEPLOY = WORKFLOWS / "deploy.yml"
+
+#: 全部 workflow。供應鏈與權限的斷言一律**掃完整集合**，漏一個等於那一個沒被約束。
+ALL_WORKFLOWS = [CI, UPDATE, DEPLOY]
 
 #: §17 H1 的**最低 gate 集合**。workflow 的 job 名稱必須與此雙向相等。
 #:
@@ -83,13 +87,13 @@ def test_ci_jobs_與最低_gate_集合雙向相等():
 
 
 def test_沒有任何_continue_on_error():
-    for path in (CI, UPDATE):
+    for path in ALL_WORKFLOWS:
         for node in iter_nodes(load(path)):
             if isinstance(node, dict):
                 assert "continue-on-error" not in node, f"{path.name} 出現 continue-on-error"
 
 
-@pytest.mark.parametrize("path", [CI, UPDATE], ids=lambda p: p.name)
+@pytest.mark.parametrize("path", ALL_WORKFLOWS, ids=lambda p: p.name)
 def test_gate_指令不得吞掉失敗(path: Path):
     """`|| true`、`|| :`、`; true` 會讓一個失敗的 gate 亮綠燈。"""
     text = path.read_text(encoding="utf-8")
@@ -192,7 +196,7 @@ def test_ci_先_build_再複製_e2e_資料():
 
 # ───────────────────────────────────────────────────────────── H4
 
-@pytest.mark.parametrize("path", [CI, UPDATE], ids=lambda p: p.name)
+@pytest.mark.parametrize("path", ALL_WORKFLOWS, ids=lambda p: p.name)
 def test_所有_uses_釘不可變_sha(path: Path):
     for ref in all_uses(load(path)):
         assert "@" in ref, f"{path.name}：{ref} 沒有版本標記"
@@ -200,7 +204,7 @@ def test_所有_uses_釘不可變_sha(path: Path):
         assert SHA40.match(rev), f"{path.name}：{ref} 不是 40 hex 的不可變 SHA"
 
 
-@pytest.mark.parametrize("path", [CI, UPDATE], ids=lambda p: p.name)
+@pytest.mark.parametrize("path", ALL_WORKFLOWS, ids=lambda p: p.name)
 def test_預設_permissions_為最小(path: Path):
     doc = load(path)
     assert doc.get("permissions") == {"contents": "read"}, (
@@ -208,15 +212,84 @@ def test_預設_permissions_為最小(path: Path):
     )
 
 
-def test_只有資料更新_job_擁有寫入權():
-    for path in (CI, UPDATE):
+#: 允許提權的 job 與其**精確**權限集合。清單以外一律不得有 write。
+ALLOWED_WRITE = {
+    # promotion 要 commit／push；失敗要開 issue
+    ("update-data.yml", "update"): {"contents", "issues"},
+    # 部署本身用 Cloudflare API token，repo 這邊只需要開 issue 的權限
+    ("deploy.yml", "deploy"): {"issues"},
+}
+
+
+def test_只有登記過的_job_擁有寫入權():
+    for path in ALL_WORKFLOWS:
         for name, job in load(path)["jobs"].items():
             perms = job.get("permissions", {})
             writable = {k for k, v in perms.items() if v == "write"}
-            if path is UPDATE and name == "update":
-                assert writable == {"contents", "issues"}, writable
-            else:
-                assert not writable, f"{path.name}:{name} 不該有寫入權：{writable}"
+            expected = ALLOWED_WRITE.get((path.name, name), set())
+            assert writable == expected, f"{path.name}:{name} 的寫入權 {writable} ≠ {expected}"
+
+
+def test_部署以_ci_驗過的_commit_為輸入():
+    """§9.2.3：該 commit 即 build 輸入的**唯一**來源。
+
+    用分支 tip 會讓「CI 驗過的內容」與「實際部署的內容」在排隊期間分岔，
+    而兩者在 log 上長得一模一樣。
+    """
+    steps = load(DEPLOY)["jobs"]["deploy"]["steps"]
+    checkout = next(s for s in steps if "checkout" in s.get("uses", ""))
+    assert checkout["with"]["ref"] == "${{ env.TARGET_SHA }}", checkout["with"]
+    assert "workflow_run.head_sha" in load(DEPLOY)["jobs"]["deploy"]["env"]["TARGET_SHA"]
+
+
+def test_部署同時掛在_ci_與月更新之後():
+    """月更新的 commit 由 `GITHUB_TOKEN` 推送，**不會觸發 CI**。
+
+    只掛 CI 的話資料更新永遠不會被部署出去，而且是靜默的。
+    """
+    doc = load(DEPLOY)
+    triggers = doc.get("on") or doc.get(True)
+    upstream = triggers["workflow_run"]["workflows"]
+    assert set(upstream) == {"CI", "月更新資料"}, upstream
+    assert triggers["workflow_run"]["branches"] == ["main"]
+
+
+def test_部署只在上游成功時執行():
+    cond = load(DEPLOY)["jobs"]["deploy"]["if"]
+    assert "workflow_run.conclusion == 'success'" in cond, cond
+
+
+def test_部署自己跑一次_payload_gate():
+    """資料更新的 commit 沒跑過 CI，這是它唯一的 payload 檢查。"""
+    runs = [s.get("run", "") for s in load(DEPLOY)["jobs"]["deploy"]["steps"]]
+    assert any("measure_payload.py" in r for r in runs), "部署少了 payload gate"
+
+
+def test_部署後驗證線上版本():
+    """§9.2.3：部署啟用成功後該版本才是 authoritative。
+
+    wrangler 回報成功但線上還是舊版時，沒有這一步就會靜默停在舊資料上。
+    """
+    steps = load(DEPLOY)["jobs"]["deploy"]["steps"]
+    deploy_i = next(i for i, s in enumerate(steps) if "pages deploy" in s.get("run", ""))
+    verify_i = next(i for i, s in enumerate(steps) if "datasetVersion" in s.get("run", "")
+                    and "pages.dev" in s.get("run", ""))
+    assert deploy_i < verify_i, "驗證須在部署之後"
+    assert "exit 1" in steps[verify_i]["run"], "版本不符時必須 fail-closed"
+
+
+def test_部署失敗會開_issue():
+    steps = load(DEPLOY)["jobs"]["deploy"]["steps"]
+    notify = next(s for s in steps if s.get("if") == "failure()")
+    assert "gh issue create" in notify["run"]
+
+
+def test_wrangler_版本釘死():
+    """浮動版本＝把部署內容交給第三方隨時替換（H4 的同一條理由）。"""
+    env = load(DEPLOY)["jobs"]["deploy"]["env"]
+    assert re.fullmatch(r"\d+\.\d+\.\d+", str(env["WRANGLER_VERSION"])), env["WRANGLER_VERSION"]
+    runs = " ".join(s.get("run", "") for s in load(DEPLOY)["jobs"]["deploy"]["steps"])
+    assert "wrangler@${WRANGLER_VERSION}" in runs, "部署指令未使用釘死的版本"
 
 
 def test_ci_沒有任何_job_提權():

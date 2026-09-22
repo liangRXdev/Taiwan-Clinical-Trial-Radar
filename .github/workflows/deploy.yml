@@ -1,0 +1,142 @@
+# Cloudflare Pages 部署（§9.2.3 的部署鏈）。
+#
+# **build 的輸入是一個明確的 commit SHA，不是「分支現在的樣子」。**
+# `workflow_run` 給的 `head_sha` 就是那個 commit；checkout 一律用它，不用分支 tip。
+# 用 tip 會讓「CI 驗過的內容」與「實際部署的內容」在排隊期間分岔，而兩者長得一樣。
+#
+# 兩個上游觸發，缺一不可：
+#
+# - **CI**：一般的程式碼變更。
+# - **月更新資料**：它的 commit 由 `GITHUB_TOKEN` 推送，而 GitHub 刻意不讓這種 push
+#   觸發 workflow——只掛 CI 的話，資料更新永遠不會被部署出去，而且是靜默的。
+#
+# 因為資料更新的 commit 沒有跑過 CI，本 workflow **自己跑一次 payload gate**：
+# F1 的估算層 fail-closed 很便宜，而它擋的正是「資料長大到超出預算」這種只會在
+# 資料更新那條路徑上發生的事。
+
+name: 部署
+
+on:
+  workflow_run:
+    workflows: ["CI", "月更新資料"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # **與資料更新分開的佇列**：部署慢不該卡住下一次抓取。
+  # `cancel-in-progress: false`——取消一個上傳到一半的部署會留下混版本的站台。
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # workflow_dispatch 沒有 `workflow_run` 這個 context，要單獨放行
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # 部署失敗須產生通知（§9.2.3）
+      issues: write
+    env:
+      # 上游 run 驗過的那個 commit。手動 dispatch 時退回本次的 ref。
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      PROJECT: taiwan-clinical-trial-radar
+      # 與本機首次部署同一版。浮動版本＝把部署內容交給第三方隨時替換（H4 的同一條理由）
+      WRANGLER_VERSION: "4.136.1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - run: npm ci
+      - run: uv sync --locked
+
+      - name: build
+        run: npm run build
+
+      - name: payload gate（F1 的估算層 fail-closed）
+        # 資料更新的 commit 沒跑過 CI，這一關是它唯一的 payload 檢查。
+        # **通過不代表 F1 通過**——F1 的 oracle 是部署端實收位元組，見下一步。
+        run: uv run python scripts/measure_payload.py --out reports/payload.json
+
+      - name: 記下要部署的 datasetVersion
+        id: target
+        run: |
+          set -euo pipefail
+          VER="$(node -e "process.stdout.write(require('./dist/data/manifest.json').datasetVersion)")"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "將部署 datasetVersion=${VER}（commit ${TARGET_SHA}）"
+
+      - name: 部署到 Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "缺少 CLOUDFLARE_API_TOKEN 或 CLOUDFLARE_ACCOUNT_ID secret" >&2
+            exit 1
+          fi
+          npx --yes "wrangler@${WRANGLER_VERSION}" pages deploy dist \
+            --project-name="${PROJECT}" \
+            --branch=main \
+            --commit-hash="${TARGET_SHA}"
+
+      - name: 驗證線上版本即為本次部署的版本
+        # §9.2.3：**部署啟用成功後該版本才是 authoritative。** wrangler 回報成功但
+        # 線上還是舊版（快取、啟用失敗）時，沒有這一步就會靜默停在舊資料上。
+        env:
+          EXPECTED: ${{ steps.target.outputs.version }}
+        run: |
+          set -euo pipefail
+          URL="https://${PROJECT}.pages.dev/data/manifest.json"
+          for attempt in 1 2 3 4 5 6; do
+            LIVE="$(curl -fsSL --max-time 30 "$URL" | node -e "
+              let s='';process.stdin.on('data',c=>s+=c).on('end',()=>process.stdout.write(JSON.parse(s).datasetVersion))")"
+            if [ "$LIVE" = "$EXPECTED" ]; then
+              echo "線上 datasetVersion=${LIVE}，與本次部署相符"
+              exit 0
+            fi
+            echo "第 ${attempt} 次：線上仍是 ${LIVE}，等待啟用…"
+            sleep 20
+          done
+          echo "部署啟用逾時：線上 ${LIVE} ≠ 本次 ${EXPECTED}" >&2
+          exit 1
+
+      - name: 失敗時開 issue
+        # 部署失敗不回退、不混合：**前一個成功部署仍為 authoritative**（§9.2.3）。
+        # 這裡只負責讓人知道，不做任何補償動作。
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VERSION: ${{ steps.target.outputs.version }}
+        run: |
+          gh issue create \
+            --title "部署失敗（commit ${TARGET_SHA}）" \
+            --label "deploy" \
+            --body "$(printf '%s\n' \
+              "部署未完成。**前一個成功部署仍是 authoritative**，線上資料未被改動也未回退。" \
+              "" \
+              "- commit：\`${TARGET_SHA}\`" \
+              "- 預期 datasetVersion：\`${VERSION:-未知}\`" \
+              "- run：${RUN_URL}" \
+              "" \
+              "下一次月更新的 baseline 仍以最後一個成功發布快照為準。")"
