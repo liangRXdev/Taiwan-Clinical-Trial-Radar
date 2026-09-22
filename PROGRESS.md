@@ -1090,11 +1090,52 @@ commit 一個新的**。用它 checkout 會部署資料更新**之前**那份 `p
 
 ### 代價與遺留
 
-- **站台有約 7 分鐘不可用**（前端要 v2、資料還是 v1）。schemaVersion bump 時
-  前端與資料必須同時上線，而目前的部署鏈把兩者分開——**這個順序問題還沒解**，
-  下次 bump 前要先處理。
+- **站台有約 7 分鐘不可用**（前端要 v2、資料還是 v1）。**已於同日解掉**，見下節。
 - F2 基線漂移 <0.03%，不需更新（20% 門檻正是為此而設）。
 
 ### 測試
 
 pytest 249、vitest 239、Playwright 74、fixture 自檢 289 條。
+
+---
+
+## 2026-09-22（深夜）— 部署鏈改成「資料先行」
+
+### 先釐清一件事：部署本來就是原子的
+
+`npm run build` 把 `public/` 複製進 `dist/`，bundle 與資料**同一個 commit 一起上線**。
+所以風險不是「兩者時間差」，而是**同一個 commit 內部就不一致**——改了 schema、
+推了程式碼，而 `public/data/` 還是上一版的 artifact（資料要連網重建，不在那次 commit 裡）。
+
+把部署順序調來調去解不了這個，要擋的是「不一致的組合被部署出去」。
+
+### 兩道 gate
+
+`scripts/check_schema_alignment.py` 比對三處：`trial_radar/artifacts.py` 的
+`SCHEMA_VERSION`、`src/lib/schema.ts` 的 `SUPPORTED_SCHEMA_VERSION`、
+`public/data/manifest.json` 的 `schemaVersion`。
+
+- **CI**（獨立一步，失敗原因在 job 列表一眼可見）→ 部署只在 CI 綠時觸發，
+  壞組合根本不會被部署
+- **部署鏈**（build 之前）→ 月更新那條路徑不經過 CI，要自己再驗一次。
+  不符即不部署，站台停在舊 bundle ＋ 舊資料，那是一致且可用的組合（§9.2.3）
+
+前端版本以正規表示式讀 TS **原始碼**，不從 build 產物讀——build 產物是這支腳本
+要保護的東西之一，拿它當輸入就是循環。
+
+### 固定流程（寫進 `CLAUDE.md`）
+
+1. 同時改 ETL 與前端的版本常數（兩者是同一份契約的兩側）
+2. 本機重建 fixture
+3. push → **CI 會紅在 schema 對齊那一步，這是預期的**
+4. dispatch `月更新資料`（以新 schema 重建 artifact 並 commit）
+5. 資料 commit 落地後分支 tip 才一致，部署自動跟上
+
+**不要為了讓 CI 變綠而手改資料的 `schemaVersion`**——那個欄位由 ETL 產生，手改等於偽造。
+
+### 驗證
+
+判定矩陣五格各有案例（一致／未發布過／ETL≠前端／**資料落後**／資料超前），
+另以「把 SCHEMA_VERSION 改成 3 而資料是 2」實測：腳本 exit 1、兩條測試轉紅。
+
+pytest 249 → 260。

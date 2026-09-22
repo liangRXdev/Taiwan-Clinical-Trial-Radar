@@ -5,7 +5,7 @@
 - 站台 <https://taiwan-clinical-trial-radar.pages.dev>（Cloudflare Pages，Direct Upload）
 - repo <https://github.com/liangRXdev/Taiwan-Clinical-Trial-Radar>（public，2026-09-22 建立）
 - 已發布 `datasetVersion=ef785e7addff8596`：5,888 Trial／18,736 列，`sourceUpdatedAt=2026-08-17`
-- **測試**：pytest 249、vitest 239、Playwright 74（fixture）＋ F4 兩條需 production 資料、fixture 自檢 289 條斷言
+- **測試**：pytest 260、vitest 239、Playwright 74（fixture）＋ F4 兩條需 production 資料、fixture 自檢 289 條斷言
 - **F1 合格**：對真實部署實測 **1,284,017** bytes／門檻 1,500,000（餘裕 14.4%），已接進 `deploy.yml` 成為真正的 gate
 
 **M4 亦已完成**（README／pharmacy-portal／規格符合度稽核 ＋ 五項必修）。
@@ -216,7 +216,9 @@ A 群 fixture **已建立並補齊 v0.5 案例**（`tests/fixtures/a_core/` 73 �
 - Codex 54 條判定中**還有 43 條未逐行覆核**，多為「弱化」，建議分批處理
 - [x] ~~`trials-index` 減肥~~ **已完成**（schemaVersion 2 稀疏 `displayFields`）：
   F1 1,452,124 → **1,284,017**，餘裕 3.2% → **14.4%**
-- [ ] **schemaVersion bump 時前端與資料的上線順序**——這次 bump 讓站台壞了約 7 分鐘（前端要 v2、線上資料還是 v1）。下次 bump 前要先解
+- [x] ~~schemaVersion bump 的上線順序~~ **已解**（資料先行）：`check_schema_alignment.py`
+  在 CI 與部署鏈各擋一次，三處（ETL／前端／已發布 artifact）不一致即紅。
+  流程寫在 `CLAUDE.md`：改 schema → CI 會紅（預期）→ 跑資料更新 → 部署自動跟上
 ---
 
 ## 明確不做（勿在後續迭代偷偷加回來）

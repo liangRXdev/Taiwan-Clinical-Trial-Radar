@@ -317,6 +317,29 @@ def test_通知路徑不依賴既有的_label():
         assert "--force" in run, f"{path.name} 的 label 建立不是冪等的"
 
 
+def test_schema_對齊在兩條路徑上都被強制():
+    """**資料先行**的兩道關。
+
+    2026-09-22：`SCHEMA_VERSION` 1 → 2 推上去而 `public/data/` 還是 v1，
+    部署把 v2 前端配 v1 資料送上線，站台約 7 分鐘不可用。
+    部署本身是原子的（build 把 `public/` 複製進 `dist/`），
+    要擋的是**同一個 commit 內部就不一致**。
+    """
+    ci_runs = [s.get("run", "") for s in load(CI)["jobs"]["pytest"]["steps"]]
+    assert any("check_schema_alignment.py" in r for r in ci_runs), "CI 沒有 schema 對齊 gate"
+
+    dep = load(DEPLOY)["jobs"]["deploy"]["steps"]
+    dep_runs = [s.get("run", "") for s in dep]
+    assert any("check_schema_alignment.py" in r for r in dep_runs), (
+        "部署鏈沒有 schema 對齊 gate——月更新那條路徑不經過 CI"
+    )
+
+    # **必須在部署之前**，否則擋不住
+    check_i = next(i for i, r in enumerate(dep_runs) if "check_schema_alignment.py" in r)
+    deploy_i = next(i for i, r in enumerate(dep_runs) if "pages deploy" in r)
+    assert check_i < deploy_i, "schema 對齊須在部署之前"
+
+
 def test_f1_的真實量測有進部署_gate():
     """**F1 的 oracle 是部署端實收位元組，不是建置期估算。**
 

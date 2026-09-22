@@ -88,6 +88,13 @@ jobs:
       - run: npm ci
       - run: uv sync --locked
 
+      - name: schema 對齊（資料先行的最後一道）
+        # **月更新那條路徑不經過 CI**，所以這裡要自己再驗一次。
+        # 前端要求的 schemaVersion 與 `public/data/` 不符時**不部署**——
+        # §9.2.3：部署失敗時前一個成功部署仍為 authoritative，
+        # 站台會停在舊 bundle ＋ 舊資料，那是一致且可用的組合。
+        run: uv run python scripts/check_schema_alignment.py
+
       - name: build
         run: npm run build
 

@@ -155,6 +155,26 @@ v0.1 曾寫「`0` 不可自動視為 missing」，那條**只對數值欄位成�
 - `資料更新時間` 是**來源欄位**，與 `builtAt` 是兩回事，manifest 分開存、UI 分開顯示且標籤不同。
 - 純邏輯抽成可 import 的函式，讓 pytest 在無網路下 mock 測試。
 
+## 改 schemaVersion 的固定流程（資料先行）
+
+**部署是原子的**——`npm run build` 把 `public/` 複製進 `dist/`，bundle 與資料同一個
+commit 一起上線。所以風險不是「兩者時間差」，而是**同一個 commit 內部就不一致**：
+改了 schema、推了程式碼，而 `public/data/` 還是上一版的 artifact（資料要連網重建，
+不在那次 commit 裡）。
+
+2026-09-22 就是這樣壞了約 7 分鐘。現在有兩道 gate 擋著
+（`scripts/check_schema_alignment.py`，CI 與部署鏈各跑一次），流程是：
+
+1. 改 `trial_radar/artifacts.py` 的 `SCHEMA_VERSION` **與** `src/lib/schema.ts` 的
+   `SUPPORTED_SCHEMA_VERSION`——**兩者是同一份契約的兩側，必須同時改**
+2. 本機重建 fixture：`uv run python scripts/build_web_fixture.py`
+3. push。**CI 會紅**在 schema 對齊那一步——這是預期的，不是要修的
+4. 手動 dispatch `月更新資料`（會以新 schema 重建 artifact 並 commit）
+5. 資料 commit 落地後分支 tip 才一致，部署自動跟上
+
+**不要為了讓 CI 變綠而先改資料的 schemaVersion**——那個欄位由 ETL 產生，
+手改等於偽造。CI 紅在這一步的正確反應是「去跑資料更新」，不是「想辦法讓它綠」。
+
 ## 抓取環境
 
 `data.fda.gov.tw` 從 GitHub Actions runner 直接抓**沒有問題**，不需要 proxy。memory 裡記的「TFDA 回 500」只發生在 **Google IP**（Apps Script），與 Actions（Azure）無關；`TFDA-drug-shortage-dashboard` 的排程長期直打同一網域成功。
