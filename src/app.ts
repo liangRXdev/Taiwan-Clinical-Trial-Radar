@@ -24,6 +24,7 @@ import { renderDetail } from "./ui/detail.js";
 import { renderDisclaimer } from "./ui/disclaimer.js";
 import { el, mount } from "./ui/dom.js";
 import { renderFilters } from "./ui/filters.js";
+import { renderMeta } from "./ui/meta.js";
 import { renderScopeBar, renderZeroResultHint } from "./ui/scopeBar.js";
 import { renderStats } from "./ui/stats.js";
 import { LABEL } from "./ui/text.js";
@@ -251,10 +252,9 @@ export class App {
         el("a", { class: "skip-link", href: "#results", text: "跳至搜尋結果" }),
         el("header", { class: "site-header" }, [
           el("h1", { text: "台灣藥品臨床試驗檢索" }),
-          el("p", {
-            class: "lede",
-            text: `資料來源：TFDA 開放資料 205。共 ${this.manifest.trialCount} 個試驗、${this.manifest.recordCount} 筆審查紀錄。`,
-          }),
+          // 總數只由 `renderMeta` 呈現（E3）。這裡再寫一次等於同一個事實有兩個
+          // 不受同一個 oracle 約束的 surface，兩者漂移時使用者看得到、測試看不到。
+          el("p", { class: "lede", text: "資料來源：TFDA 開放資料 205（藥品臨床試驗審查紀錄）。" }),
         ]),
         renderDisclaimer(),
         el("div", { class: "searchbar" }, [input]),
@@ -295,6 +295,7 @@ export class App {
             list,
             more,
             renderStats(this.stats),
+            renderMeta(this.manifest),
           ]),
         ]),
         renderDisclaimer(),
@@ -332,7 +333,10 @@ export class App {
         el("a", { class: "skip-link", href: "#detail", text: "跳至試驗內容" }),
         back,
         renderDisclaimer(),
-        el("main", { id: "detail" }, [renderDetail(trial, shard, { nearDuplicates: near })]),
+        el("main", { id: "detail" }, [
+          renderDetail(trial, shard, { nearDuplicates: near }),
+          renderMeta(this.manifest),
+        ]),
         renderDisclaimer(),
       ]),
     );

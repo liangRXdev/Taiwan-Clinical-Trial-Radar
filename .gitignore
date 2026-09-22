@@ -22,3 +22,6 @@ tests/fixtures/_*.txt
 reports/
 test-results/
 playwright-report/
+
+# Remember plugin 的 session 紀錄（本機用，不進版控）
+.remember/

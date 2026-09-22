@@ -229,3 +229,19 @@ button:focus-visible {
   border: 1px solid var(--accent); border-radius: var(--radius);
   padding: 0.45rem 0.9rem;
 }
+
+/* ---------------------------------------------------------------- meta（E2(b)／E3） */
+
+/* 白卡內才可用 --text-muted（4.83:1）；本區塊整個在卡內。 */
+.meta {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.9rem 1rem; margin-top: 1.25rem;
+}
+.meta__title { margin: 0 0 0.6rem; font-size: 0.95rem; }
+.meta__list { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 0.8rem; }
+/* dt／dd 包在 .meta__row（語意標記 data-meta-field）裡，用 contents 讓它們
+   直接參與外層 grid——否則兩欄對齊會斷在 row 這一層。 */
+.meta__row { display: contents; }
+.meta__label { font-size: 0.8rem; color: var(--text-muted); }
+.meta__value { margin: 0; font-size: 0.82rem; color: var(--text-primary); }
+.meta .hint { margin: 0.7rem 0 0; }

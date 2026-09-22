@@ -62,6 +62,26 @@ export const SCOPE = {
     + "查無結果不代表該試驗不存在；請改向官方資料來源查詢。",
 } as const;
 
+/**
+ * §9.3.5 的**非 facet metadata surface**（E2(b)／E3）。
+ *
+ * 全部是**單值**：沒有任何一項是分組計數，那些歸 facet widget（E2(a)）。
+ * `sourceUpdatedAt` 為 null 時用 `sourceUpdatedUnknown`，**不得代入建置日或今天**。
+ */
+export const META = {
+  title: "資料版本",
+  sourceUpdatedAt: "來源資料更新日",
+  sourceUpdatedUnknown: "來源未提供",
+  builtAt: "本站資料建置時間",
+  builtAtUnparsed: "建置時間無法辨識",
+  taipeiSuffix: "（台北時間）",
+  trialCount: "收錄試驗數",
+  recordCount: "收錄審查紀錄",
+  trialUnit: (n: number) => `${n} 個試驗`,
+  recordUnit: (n: number) => `${n} 筆`,
+  note: "本站為靜態快照，資料更新日之後的異動不會反映在此。",
+} as const;
+
 /** §7.1 統計卡。**以 Trial 為分母並明寫「試驗」。** */
 export const STATS = {
   unit: "試驗",
