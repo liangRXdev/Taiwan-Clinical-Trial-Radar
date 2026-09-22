@@ -60,6 +60,25 @@ Codex 的 54 條判定中，上表覆核了 11 條。**其餘 43 條（多為「
 
 ---
 
+## 處置結果（2026-09-22，commit `9d10779`）
+
+**五項必修全部修畢**，使用者定案：命中日期**列出全部**、`?protocol=` **補完**、
+scope 失敗時成功且驗證過的檔案可留 cache 但不得影響畫面／scope／URL／結果集。
+
+| # | 處置 | 驗證 |
+|---|---|---|
+| 1、2 | `Hit` 加 `date`，由搜尋索引的 `d` 帶出；多筆日期去重昇序**全部列出**；有／無日期並存時兩種標示都出現 | 測試改為「命中日期 ≠ Trial 最新日期」，並加反向斷言「最新日期不得出現在命中標籤裡」 |
+| 3、4 | `results()` 改讀 `filesFor(目前 scope)`；失敗還原 `state.scope` ＋ `replaceState` | e2e 改驗 URL／控制項／結果集三者退回，另加「部分載入不得以半套索引產生結果」；**停用退回邏輯實測兩條都轉紅** |
+| 5 | 新 `src/lib/protocol.ts`：identity 比對 ＋ canonical 導向；`rejected` 與 `notFound` **分開** | 13 條 unit ＋ 4 條 e2e |
+| 6 | `payload-baseline.json` ＋ `check_on_demand()`，超 20% **告警不失敗** | 反向哨兵：基線減半後三個檔都告警 |
+| 7 | `measure-f1-live.mjs` 接進 `deploy.yml` 部署後步驟並產 artifact；去重改為記次數計入 | `test_f1_的真實量測有進部署_gate` |
+| 8–11 | **未處理**（Medium／Low），見下 | — |
+
+未處理的四項：E7 候選值只掃原形、C5 十五列只驗非空 tuple、E2 的 selector oracle、
+A1 的 `<=`。都不影響使用者可見行為，建議與其餘 43 條未覆核項一起分批處理。
+
+---
+
 ## 必修清單（Critical/High，判定為接受或部分接受）
 
 依建議處理順序：
