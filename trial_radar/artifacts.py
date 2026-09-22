@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from .comparison import comparison_key  # noqa: F401  (供 stats 一致性引用者取得同一實作)
 from .fields import (
     CARD_FIELDS,
-    CATEGORICAL_FIELDS,
     LONG_SEARCH_FIELDS,
     PROTOCOL,
     SHORT_SEARCH_FIELDS,

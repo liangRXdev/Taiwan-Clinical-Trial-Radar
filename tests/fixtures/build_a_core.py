@@ -239,7 +239,6 @@ def main():
     for k, vals in ROWS:
         assert len(vals) == len(COLUMNS), f"{k} 欄數不符：{len(vals)}"
         for v in vals:
-            assert "\x1f" in v or True
             assert "\x1f" not in v, f"{k} 含 U+001F（§6.3 應由管線硬失敗，不放進正常 fixture）"
 
     # input.csv：UTF-8 with BOM、CRLF，比照來源 205_2.csv

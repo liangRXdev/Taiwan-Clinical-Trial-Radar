@@ -503,7 +503,7 @@ def main():
     for p in by_proto:
         id_map.setdefault(identity_normalize(p), []).append(p)
     coll = {k: v for k, v in id_map.items() if len(v) > 1}
-    check(not coll, f"a_core 無 identity 碰撞（碰撞案例歸 a7 fixture）{'' if not coll else coll}")
+    check(not coll, f"a_core 無 identity 碰撞（碰撞案例歸 a7 fixture）{coll if coll else ''}")
 
     # §6.2.2：looseKey 為空即 protocolNonIdentifier（含空字串與空白-only）
     nonid_rows = [k for k, r in rows.items()

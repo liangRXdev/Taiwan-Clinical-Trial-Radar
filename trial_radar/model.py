@@ -6,11 +6,10 @@
 from __future__ import annotations
 
 import datetime as _dt
-from dataclasses import dataclass, field as _dc_field
+from dataclasses import dataclass
 
 from .comparison import comparison_key
 from .fields import (
-    COLUMNS,
     PERIOD_END,
     PERIOD_START,
     PRESENTATION_FIELDS,
@@ -101,7 +100,7 @@ def build_records(
     # §6.3.2：recordId 的 duplicate ordinal 一律存在且從 #0 起。
     # 同 Trial 內相同 canonical serialization 的列彼此逐位元相同，序號依內容排序配置。
     groups: dict[tuple[str, bytes], list[int]] = {}
-    for i, (tid, c) in enumerate(zip(tids, canon)):
+    for i, (tid, c) in enumerate(zip(tids, canon, strict=True)):
         groups.setdefault((tid, c), []).append(i)
     ordinal_of: dict[int, int] = {}
     for idxs in groups.values():
@@ -147,7 +146,7 @@ def build_trials(
 
     by_key: dict[str, list[SourceRecord]] = {}
     key_obj: dict[str, IdentityKey] = {}
-    for rec, key in zip(records, keys):
+    for rec, key in zip(records, keys, strict=True):
         rendered = key.render()
         by_key.setdefault(rendered, []).append(rec)
         key_obj[rendered] = key

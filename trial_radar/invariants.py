@@ -13,14 +13,14 @@ shard 裡。record 放錯 shard 時排序鍵**取不到**，硬算會把「查�
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field as _dc_field
+from dataclasses import dataclass
+from dataclasses import field as _dc_field
 
 from .artifacts import (
     FACETS,
     TOP_LEVEL_FILE_KEYS,
     artifact_digest,
     brotli_size,
-    canonical_json_bytes,
     dataset_version,
     manifest_paths,
 )

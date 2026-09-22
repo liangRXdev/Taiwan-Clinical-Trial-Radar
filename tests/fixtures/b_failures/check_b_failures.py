@@ -59,7 +59,7 @@ def main():
     covered = {c["errorCode"] for c in oracle["fileCases"]} \
         | {c["errorCode"] for c in oracle["injectionOnly"]}
     missing = set(codes) - covered
-    check(not missing, f"每個 error code 都有 fixture 或注入點"
+    check(not missing, "每個 error code 都有 fixture 或注入點"
           + ("" if not missing else f"（未涵蓋：{sorted(missing)}）"))
     layers = set(oracle["precedence"])
     bad_layer = [c["layer"] for c in oracle["fileCases"] + oracle["injectionOnly"]

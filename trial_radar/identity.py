@@ -94,7 +94,7 @@ def assign_identity_keys(rows: list[dict[str, str]]) -> list[IdentityKey]:
             hash_groups.setdefault(sha256hex(canon[i]), []).append(i)
 
     ordinal_of: dict[int, int] = {}
-    for h, idxs in hash_groups.items():
+    for idxs in hash_groups.values():
         # 同一 content hash 內的列逐位元相同；依 canonical 位元組排序後配號，
         # 結果與輸入列序無關
         for k, i in enumerate(sorted(idxs, key=lambda j: canon[j])):
@@ -127,7 +127,7 @@ def detect_identity_collision(rows: list[dict[str, str]], keys: list[IdentityKey
     # 先只分組。fingerprint 要算 canonical serialization，成本不低而絕大多數執行不會碰撞，
     # 所以**延到確定有碰撞群之後才算**，且只算該群的列。
     by_key: dict[str, dict[str, list[int]]] = {}
-    for i, (row, key) in enumerate(zip(rows, keys)):
+    for i, (row, key) in enumerate(zip(rows, keys, strict=True)):
         if key.kind != "P":
             continue
         by_key.setdefault(key.value, {}).setdefault(row[PROTOCOL].strip(), []).append(i)

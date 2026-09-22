@@ -8,8 +8,8 @@ from trial_radar.comparison import ComparisonKeyError, comparison_key
 from trial_radar.fields import CATEGORICAL_FIELDS, NUMERIC_FIELDS
 from trial_radar.model import build_trials
 from trial_radar.parsing import (
-    FieldValue,
     MAX_SAFE_INT,
+    FieldValue,
     parse_categorical,
     parse_numeric,
     parse_text,

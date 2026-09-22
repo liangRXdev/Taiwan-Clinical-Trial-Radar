@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     def body() -> int:
-        fetched_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+        fetched_at = datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
 
         if args.from_zip:
             raw = args.from_zip.read_bytes()

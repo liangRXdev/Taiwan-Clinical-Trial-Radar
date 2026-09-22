@@ -59,7 +59,7 @@ def taipei_build_date(now: datetime.datetime | None = None) -> datetime.date:
     **不得取決於 runner 的 UTC 日期**——runner 是 UTC，台灣時間 08:00 前 UTC 仍是前一天，
     「未來日期」判定會差一天（H5）。
     """
-    now = now or datetime.datetime.now(datetime.timezone.utc)
+    now = now or datetime.datetime.now(datetime.UTC)
     return now.astimezone(TAIPEI).date()
 
 
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     build_date = args.build_date or taipei_build_date()
-    fetched_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    fetched_at = datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
 
     try:
         if args.fetch:
@@ -130,15 +130,14 @@ def main(argv: list[str] | None = None) -> int:
                 )
             raise
 
-        built_at = (
-            prev["builtAt"] if prev else
-            datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
-        )
+        # §9.4：`builtAt` 是**這份發布物**的建置時間。無變動時根本不會發布
+        # （promotion 以 `datasetVersion` 判定），所以這裡一律取「現在」；
+        # 沿用 prev 的值反而會讓真的有變動的那次標上舊時間。
         out = build_artifacts(
             trials,
             build_date=build_date.isoformat(),
             fetched_at=fetched_at,
-            built_at=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+            built_at=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
             source_sha256=source_sha,
             bootstrap=drop.bootstrap,
         )

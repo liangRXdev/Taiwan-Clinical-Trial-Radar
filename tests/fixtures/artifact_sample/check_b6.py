@@ -18,7 +18,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_sample import (  # noqa: E402
-    artifact_digest, build, dataset_version, load_rows,
+    artifact_digest,
+    build,
+    dataset_version,
+    load_rows,
 )
 
 failures = []
@@ -120,7 +123,7 @@ def validate(on_disk, manifest):
         entry = shard["trials"][t["id"]]
         rids, cohort = entry["recordIds"], entry["latestCohort"]
 
-        def sort_key(rid):
+        def sort_key(rid, shard=shard):  # noqa: B023 — 當圈內即呼叫，綁定為預設值以示無延遲求值
             rec = shard["records"].get(rid)
             d = (rec or {}).get("typed", {}).get("資料更新時間")
             # 可採計日期降序、不可採計者置末 → 以 (無日期?, 反轉日期, rid) 排序

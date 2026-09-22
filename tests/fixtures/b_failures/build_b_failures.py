@@ -62,7 +62,7 @@ def main():
     # ---- transport：200 但 MIME 非 zip（實務上是上游的錯誤頁）----
     made.append(write("upstream_error_page.html",
                       "<!DOCTYPE html><html><head><title>系統忙碌中</title></head>"
-                      "<body><h1>服務暫時無法使用</h1></body></html>".encode("utf-8")))
+                      "<body><h1>服務暫時無法使用</h1></body></html>".encode()))
 
     # ---- archive：ZIP 結構／CRC 失敗 ----
     good = zip_bytes("205_2.csv", csv_bytes(COLUMNS, [GOOD_ROW]))
@@ -73,7 +73,7 @@ def main():
     made.append(write("zip_corrupt.zip", bytes(corrupt)))
 
     made.append(write("zip_no_csv.zip",
-                      zip_bytes("readme.txt", "本壓縮檔沒有 CSV。".encode("utf-8"))))
+                      zip_bytes("readme.txt", "本壓縮檔沒有 CSV。".encode())))
 
     # ---- decode：UTF-8 解碼失敗（Big5 的「臨床」＋ 單獨的 0x80 續位元組）----
     bad_utf8 = BOM + b"\xc5\x53\xa7\xc9," + b"\x80\x80" + b"\r\n"

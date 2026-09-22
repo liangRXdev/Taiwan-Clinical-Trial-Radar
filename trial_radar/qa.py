@@ -5,18 +5,11 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from .fields import (
-    CATEGORICAL_FIELDS,
-    NUMERIC_FIELDS,
-    PERIOD_FIELDS,
     PRESENTATION_FIELDS,
-    PROTOCOL,
     TEXT_FIELDS,
 )
 from .model import Trial
-from .normalize import loose_key
 from .source import DropVerdict
 
 # §6.6.2 的字面 sentinel：三者**互相可區分，不得塌成同一值**

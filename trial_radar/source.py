@@ -141,7 +141,7 @@ def parse_csv(text: str) -> list[dict[str, str]]:
                 f"第 {lineno} 列寬度 {len(values)}，應為 {len(expected)}",
                 {"line": lineno, "width": len(values), "expected": len(expected)},
             )
-        rows.append(dict(zip(expected, values)))
+        rows.append(dict(zip(expected, values, strict=True)))
     return rows
 
 

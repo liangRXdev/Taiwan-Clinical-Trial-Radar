@@ -18,7 +18,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_sample import (  # noqa: E402
-    artifact_digest, build, canonical_json_bytes, dataset_version, load_rows, sha256hex,
+    artifact_digest,
+    build,
+    canonical_json_bytes,
+    dataset_version,
+    load_rows,
+    sha256hex,
 )
 
 failures = []

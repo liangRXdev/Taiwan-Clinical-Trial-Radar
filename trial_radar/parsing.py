@@ -10,13 +10,12 @@ from __future__ import annotations
 
 import datetime as _dt
 import re
-from dataclasses import dataclass, field as _dc_field
+from dataclasses import dataclass
 
 from .fields import (
     CATEGORICAL_FIELDS,
     LEGAL_CATEGORICAL,
     NUMERIC_FIELDS,
-    PERIOD_END,
     PERIOD_FIELDS,
     PERIOD_START,
     UPDATED_AT,
@@ -39,7 +38,7 @@ class FieldValue:
     typed: object = None
     flags: tuple[str, ...] = ()
 
-    def with_flag(self, flag: str) -> "FieldValue":
+    def with_flag(self, flag: str) -> FieldValue:
         """加一個旗標並維持排序（`rawVariants` 由 §6.4.3 在 cohort 層加上）。"""
         if flag in self.flags:
             return self

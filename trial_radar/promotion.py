@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Protocol
 
-from .artifacts import BuildOutput, canonical_json_bytes, manifest_paths
+from .artifacts import BuildOutput, manifest_paths
 from .errors import ErrorCode, PipelineError
 from .invariants import assert_invariants
 

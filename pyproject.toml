@@ -20,6 +20,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.14",
 ]
 
 [tool.pytest.ini_options]
@@ -27,3 +28,26 @@ testpaths = ["tests"]
 pythonpath = ["."]
 # fixture 自檢腳本不是 pytest 測試，由 tests/fixtures/run_all.py 單獨跑
 norecursedirs = ["tests/fixtures"]
+
+[tool.ruff]
+line-length = 100
+# ETL 模組與測試都納入；fixture 目錄是資料產生器，同樣要能跑
+src = ["."]
+
+[tool.ruff.lint]
+# **明示 select 而不是吃 ruff 的預設**：預設集合會隨 ruff 版本擴張，
+# CI 的 lint gate 會在沒有人改過程式碼的情況下轉紅（H1 要的是可重現的 gate）。
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+    # 中文註解與說明性字串常超過 100 欄，換行反而更難讀
+    "E501",
+    # `class X(str, Enum)` → `StrEnum` 會改變 `str(X.A)` 的結果（`X.A` vs `"a"`），
+    # 而 error code 會進 QA report 與 CLI 輸出。換法正確但屬於行為變更，不混在 lint 裡做。
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 測試與 fixture 產生器：`zip` 長度不齊、未用的迴圈變數、未用 context manager
+# 在短命腳本裡不構成風險，而測試本來就會大聲失敗。**production 程式碼不套用這組豁免**
+# ——`trial_radar/` 與 `scripts/` 的 zip 截斷會靜默產生錯答案，那正是本專案最怕的。
+"tests/**" = ["B007", "B905", "SIM115", "E741"]
