@@ -44,8 +44,20 @@ jobs:
       # 部署失敗須產生通知（§9.2.3）
       issues: write
     env:
-      # 上游 run 驗過的那個 commit。手動 dispatch 時退回本次的 ref。
-      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # **上游是 CI 時**才用 `head_sha`——那是 CI 驗過的那個 commit。
+      #
+      # **上游是月更新時不能用它。** `workflow_run.head_sha` 指的是「觸發那個 run 的
+      # commit」，而月更新是**自己再 commit 一個新的**（資料）。用 head_sha 會部署
+      # 資料更新**之前**的那份 `public/data/`，於是：抓到新資料、commit 進 repo、
+      # 部署舊資料、線上版本驗證還會通過（它比的是自己剛建的那份）——
+      # **每個月的資料更新都不會上線，而且完全靜默**。
+      # 2026-09-22 因為 schemaVersion bump 才讓這條路徑第一次顯形（站台 fail-closed）。
+      #
+      # 月更新那條路徑改用分支 tip，並在 checkout 之後把實際 SHA 記進 log。
+      TARGET_SHA: >-
+        ${{ github.event.workflow_run.name == 'CI'
+            && github.event.workflow_run.head_sha
+            || github.sha }}
       PROJECT: taiwan-clinical-trial-radar
       # 與本機首次部署同一版。浮動版本＝把部署內容交給第三方隨時替換（H4 的同一條理由）
       WRANGLER_VERSION: "4.136.1"
@@ -54,6 +66,14 @@ jobs:
         with:
           ref: ${{ env.TARGET_SHA }}
           persist-credentials: false
+
+      - name: 記錄實際部署的 commit
+        # 兩條上游路徑取 SHA 的方式不同，把結果寫進 log 才查得出「部署的到底是哪一份」
+        run: |
+          echo "上游：${{ github.event.workflow_run.name || 'workflow_dispatch' }}"
+          echo "TARGET_SHA=${TARGET_SHA}"
+          echo "實際 checkout：$(git rev-parse HEAD)"
+          git log -1 --oneline
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

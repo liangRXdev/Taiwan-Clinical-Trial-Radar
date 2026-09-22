@@ -242,6 +242,26 @@ def test_部署以_ci_驗過的_commit_為輸入():
     assert "workflow_run.head_sha" in load(DEPLOY)["jobs"]["deploy"]["env"]["TARGET_SHA"]
 
 
+def test_月更新那條路徑不得用_workflow_run_head_sha():
+    """**這個 bug 會讓每個月的資料更新靜默不上線。**
+
+    `workflow_run.head_sha` 指的是「觸發那個 run 的 commit」，而月更新會**自己再
+    commit 一個新的**（資料）。用 head_sha 會部署資料更新**之前**那份 `public/data/`，
+    而部署後的線上版本驗證比的是它自己剛建的那份——所以還會通過。
+    2026-09-22 因為 schemaVersion bump 才第一次顯形（站台 fail-closed）。
+    """
+    target = load(DEPLOY)["jobs"]["deploy"]["env"]["TARGET_SHA"]
+    # head_sha 必須被 CI 這個條件包住，不能無條件使用
+    assert "workflow_run.name == 'CI'" in target, f"head_sha 未以上游為條件：{target}"
+    assert "github.sha" in target, "月更新那條路徑須退回分支 tip"
+
+
+def test_部署記錄實際_checkout_的_commit():
+    """兩條上游取 SHA 的方式不同，log 裡查得出部署的是哪一份才追得下去。"""
+    runs = [s.get("run", "") for s in load(DEPLOY)["jobs"]["deploy"]["steps"]]
+    assert any("git rev-parse HEAD" in r for r in runs), "沒有記錄實際 checkout 的 commit"
+
+
 def test_部署同時掛在_ci_與月更新之後():
     """月更新的 commit 由 `GITHUB_TOKEN` 推送，**不會觸發 CI**。
 
