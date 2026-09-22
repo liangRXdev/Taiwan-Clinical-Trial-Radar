@@ -54,8 +54,8 @@ def main():
 
     print("\n[0] oracle 自身的一致性")
     codes = oracle["allErrorCodes"]
-    check(len(codes) == len(set(codes)) == 16,
-          f"§9.5 的 error code 共 16 個且互異（實際 {len(set(codes))}）")
+    check(len(codes) == len(set(codes)) == 17,
+          f"§9.5 的 error code 共 17 個且互異（實際 {len(set(codes))}）")
     covered = {c["errorCode"] for c in oracle["fileCases"]} \
         | {c["errorCode"] for c in oracle["injectionOnly"]}
     missing = set(codes) - covered

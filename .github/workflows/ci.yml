@@ -1,0 +1,143 @@
+# CI gate（驗收 H1、H4）。
+#
+# **job 名稱即 gate 名稱**：`tests/test_h_workflows.py` 以 §17 的最低 gate 集合與本檔
+# 雙向對帳——workflow 少一個 job 或多一個未登記的 job 都要轉紅。
+#
+# **無 `continue-on-error`**（H1）：一個會綠的失敗 gate 比沒有 gate 更糟，
+# 它讓人以為那件事被檢查過了。
+#
+# **所有 `uses` 釘不可變 SHA**（H4）：tag 可以被移動，`v7` 這種浮動 ref 等於
+# 把 CI 的執行內容交給第三方隨時替換。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 預設最小權限（H4）。本 workflow 不寫 repo，沒有任何 job 提權。
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+
+  typecheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  pytest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run pytest -q
+      # fixture 自檢不是 pytest 測試（`norecursedirs`），漏跑它等於 A／B／C 群的
+      # oracle 沒有被驗證過
+      - run: uv run python tests/fixtures/run_all.py
+
+  vitest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run
+
+  playwright:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # **build 在前**：vite build 會清空 `dist/`，先複製等於什麼都沒複製
+      - run: npm run build
+      - run: npm run e2e:data
+      - run: npx playwright test tests/e2e/filters.spec.ts tests/e2e/scope-perf.spec.ts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            reports/
+            test-results/
+          retention-days: 7
+
+  a11y:
+    # 與 `playwright` 分開是 H1 的要求：a11y 是獨立 gate，混進同一個 job 時
+    # 「a11y 有沒有跑」無法從 job 狀態判讀。
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # **build 在前**：vite build 會清空 `dist/`，先複製等於什麼都沒複製
+      - run: npm run build
+      - run: npm run e2e:data
+      - run: npx playwright test tests/e2e/a11y.spec.ts
+
+  payload:
+    # F1／F2 的 payload 量測。**以已發布的 `public/data/` 為對象**——量 fixture
+    # 的 47 筆等於量一個使用者從來不會付的數字，那正是 F1 自己警告的自我誤導。
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+      - run: npm ci
+      - run: uv sync --locked
+      - run: npm run build
+      - run: uv run python scripts/measure_payload.py --out reports/payload.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: payload-report
+          path: reports/payload.json
+          retention-days: 30

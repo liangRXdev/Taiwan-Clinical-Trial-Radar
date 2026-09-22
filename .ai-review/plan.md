@@ -826,6 +826,9 @@ UI 標籤須與此語意一致：顯示「資料建置時間」，**不得**顯�
 | `ID_TRUNCATION_COLLISION` | content | §6.3.4 的 trialId／recordId 截短碰撞 |
 | `INTEGRITY_DIGEST` | publish | §9.3.6 的不變量失敗（含 referential integrity、計數一致、inventory） |
 | `PROMOTION_FAILED` | publish | 替換、`git add`、commit 或 push 失敗 |
+| `BASELINE_MOVED` | publish | promotion 前的再驗證發現遠端分支 tip 已前進，或無法確認其未變（M3 新增，見下） |
+
+**`BASELINE_MOVED` 是 M3 依 H2 補上的**（2026-09-22）。H2 要求「promotion 前再驗證版本未變，不符即 fail-closed」，而 v0.9 的 §9.5 沒有給這個失敗一個 code——照原表實作只能沿用 `PROMOTION_FAILED`，那會讓「另一個 run 已發布」與「push 壞掉」在 exit code 上分不開，而前者該重跑、後者該查基礎設施。**「無法確認 tip 未變」與「tip 已變」共用同一個 code**：在發布安全性上兩者是同一件事，問不到就不准發布。
 
 **移除了** `SCHEMA_COLUMN_RENAMED`／`MISSING`／`EXTRA` 三個分立 code：欄位 rename 同時滿足 missing 與 extra，無客觀判定方式。改為單一 `SCHEMA_MISMATCH` 攜帶 detail。
 

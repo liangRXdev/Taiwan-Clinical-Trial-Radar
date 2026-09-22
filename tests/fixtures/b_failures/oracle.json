@@ -225,9 +225,15 @@
   "IDENTITY_COLLISION",
   "ID_TRUNCATION_COLLISION",
   "INTEGRITY_DIGEST",
-  "PROMOTION_FAILED"
+  "PROMOTION_FAILED",
+  "BASELINE_MOVED"
  ],
  "injectionOnly": [
+  {
+   "errorCode": "BASELINE_MOVED",
+   "layer": "publish",
+   "how": "H2 的重疊情境：建一個 clone 與其 origin，在管線跑完前從另一側 push，斷言 promotion 前的再驗證拋 BASELINE_MOVED；另測「fetch 失敗＝問不到」同樣不放行。見 tests/test_h_workflows.py"
+  },
   {
    "errorCode": "HTTP_STATUS",
    "layer": "transport",

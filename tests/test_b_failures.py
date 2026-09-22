@@ -43,7 +43,7 @@ def test_b1_every_error_code_has_distinct_nonzero_exit_code():
     斷言的是這個性質，不是特定號碼——寫死號碼等於自己發明規格。
     """
     codes = list(ErrorCode)
-    assert len(codes) == 16
+    assert len(codes) == 17
     exits = [EXIT_CODE_OF[c] for c in codes]
     assert all(e != 0 for e in exits)
     assert len(set(exits)) == len(exits)
@@ -52,7 +52,7 @@ def test_b1_every_error_code_has_distinct_nonzero_exit_code():
 
 
 def test_b1_oracle_covers_every_error_code(b_failures_oracle):
-    """§9.5 的 16 個 code 全部有 fixture 或注入點。"""
+    """§9.5 的 17 個 code 全部有 fixture 或注入點。"""
     declared = set(b_failures_oracle["allErrorCodes"])
     assert declared == {c.value for c in ErrorCode}
     covered = {c["errorCode"] for c in b_failures_oracle["fileCases"]} | {

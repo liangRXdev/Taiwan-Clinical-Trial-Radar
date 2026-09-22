@@ -3,7 +3,9 @@
 205_*.csv
 
 # 產生物
-public/data/
+# **`public/data/` 不在此列**：§9.2.3 的部署鏈以 `main` 的 commit 為 build 的唯一輸入，
+# 發布物必須進版控，否則 Cloudflare Pages 建置時根本沒有資料可送。
+# `qa/` 仍不進版控——它是每次執行的診斷輸出，以 workflow artifact 保存。
 qa/
 node_modules/
 __pycache__/

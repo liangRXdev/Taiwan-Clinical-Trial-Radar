@@ -1,0 +1,122 @@
+# 月更新（驗收 H2、H3、H4、H5）。
+#
+# **schedule 與 manual 共用同一個 concurrency group、`cancel-in-progress: false`**：
+# 兩者分開會讓「排程正在跑時手動 dispatch」變成兩條同時寫 `public/data/` 的路徑；
+# 取消進行中的 run 則可能在 `git add -A` 與 `commit` 之間把它砍掉，那正是 §9.2.1
+# 要排除的「部分發布」。排隊等前一個跑完是唯一安全的選擇。
+
+name: 月更新資料
+
+on:
+  schedule:
+    # 每月 1 日 01:10 UTC ＝ 台北 09:10。**不取整點**：整點是 Actions 的尖峰，
+    # 排程延遲可達數十分鐘，而延遲本身會讓 `buildDate` 的台北日曆日判定更難推理。
+    - cron: "10 1 1 * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只抓取與驗證，不發布（首次連線驗證用）"
+        type: boolean
+        default: false
+
+# 預設最小權限（H4）。寫入權限只給 update job，且只給 contents。
+permissions:
+  contents: read
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    permissions:
+      # **唯一提權的 job**：promotion 要 commit 與 push。
+      contents: write
+      # 失敗時開 issue（見 notify job 之外的 last-known-good 說明）
+      issues: write
+    outputs:
+      published: ${{ steps.run.outputs.published }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # promotion 要 push，用預設的 GITHUB_TOKEN 認證
+          persist-credentials: true
+          # baseline 比對要真的有歷史可 fetch
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - run: uv sync --locked
+
+      - name: 取得發布權之後才取 baseline
+        id: baseline
+        # **`actions/checkout` 預設取「觸發時」的 SHA**，排隊等待期間分支可能已經前進。
+        # 以那個舊 SHA 當 baseline 會拿過期的 `public/data/` 去比對「有沒有變動」，
+        # 得到的答案可能是錯的。因此在這裡顯式 fetch 並 checkout 分支最新 tip。
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${GITHUB_REF_NAME}"
+          git checkout -B "${GITHUB_REF_NAME}" "origin/${GITHUB_REF_NAME}"
+          TIP="$(git rev-parse "origin/${GITHUB_REF_NAME}")"
+          echo "sha=${TIP}" >> "$GITHUB_OUTPUT"
+          echo "baseline tip = ${TIP}"
+
+      - name: 設定 commit 身分
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: 抓取、驗證與發布
+        id: run
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          BASELINE_SHA: ${{ steps.baseline.outputs.sha }}
+          REMOTE_BRANCH: origin/${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ARGS=(--fetch --expect-head "${BASELINE_SHA}" --remote-branch "${REMOTE_BRANCH}")
+          if [ "${DRY_RUN}" = "true" ]; then
+            ARGS=(--fetch --dry-run)
+          fi
+          uv run python scripts/build_data.py "${ARGS[@]}" | tee run.log
+          if grep -q "已發布" run.log; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 上傳 QA report
+        # **失敗時尤其要留**：診斷輸出在 runner 隨 job 結束消失，而下一次月更新
+        # 要用「最後一次成功快照」當 baseline，中間發生什麼只剩這份報告說得清。
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-report-${{ github.run_id }}
+          path: |
+            qa/
+            run.log
+          retention-days: 90
+
+      - name: 失敗時開 issue
+        # `public/data/` 的 last known good 天然保留：promotion 是「全部成功才 commit」，
+        # 失敗時根本沒有寫入，已發布的版本原封不動（§9.2.1）。這裡只負責讓人知道。
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create \
+            --title "月更新失敗（run ${{ github.run_id }}）" \
+            --label "data-update" \
+            --body "$(printf '%s\n' \
+              "月更新 workflow 失敗，已發布的資料**未被改動**（promotion 全部成功才 commit）。" \
+              "" \
+              "- run：${RUN_URL}" \
+              "- exit code 對照見 \`scripts/build_data.py --help\`" \
+              "- QA report 在該 run 的 artifact \`qa-report-${{ github.run_id }}\`" \
+              "" \
+              "下一次月更新仍以最後一個成功發布快照為 baseline。")"

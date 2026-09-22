@@ -80,6 +80,36 @@ class RealGit:
         self._run("push")
 
 
+def verify_remote_tip(remote_branch: str, expected: str) -> None:
+    """promotion 前**再驗證一次**遠端分支 tip 未變（H2）。
+
+    baseline 是在取得發布權之後才取樣的，但整條管線跑完要好幾分鐘——期間另一個
+    run 可能已經發布。此時照原本的 baseline 發布會**覆蓋掉別人剛推上去的版本**，
+    而 `git push` 不一定會擋（fast-forward 仍成立）。
+
+    不符即 fail-closed：重跑一次比推出一個由兩個版本拼成的狀態安全。
+    """
+    try:
+        subprocess.run(["git", "fetch", "--no-tags", "origin"], check=True, capture_output=True)
+        actual = subprocess.run(
+            ["git", "rev-parse", remote_branch],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+    except subprocess.CalledProcessError as e:
+        raise PipelineError(
+            ErrorCode.BASELINE_MOVED,
+            f"無法確認 {remote_branch} 的 tip：{e.stderr.decode(errors='replace') if isinstance(e.stderr, bytes) else e.stderr}",
+            {"stage": "baseline-recheck", "remoteBranch": remote_branch},
+        ) from e
+
+    if actual != expected:
+        raise PipelineError(
+            ErrorCode.BASELINE_MOVED,
+            f"{remote_branch} 已自 {expected[:12]} 前進到 {actual[:12]}，本次不發布",
+            {"stage": "baseline-recheck", "expected": expected, "actual": actual},
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -94,6 +124,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--build-date", type=datetime.date.fromisoformat,
                     help="覆寫 buildDate（測試用；production 依 Asia/Taipei）")
     ap.add_argument("--dry-run", action="store_true", help="只驗證與產出，不 promotion")
+    ap.add_argument("--expect-head", metavar="SHA",
+                    help="promotion 前再驗證遠端分支 tip 仍為此 SHA，不符即 fail-closed（H2）")
+    ap.add_argument("--remote-branch", default="origin/main",
+                    help="--expect-head 比對的遠端 ref（預設 origin/main）")
     args = ap.parse_args(argv)
 
     build_date = args.build_date or taipei_build_date()
@@ -173,6 +207,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"dry-run：datasetVersion={out.manifest['datasetVersion']}"
                   f"，{len(trials)} Trial／{len(rows)} 列，未發布")
             return 0
+
+        if args.expect_head is not None:
+            verify_remote_tip(args.remote_branch, args.expect_head)
 
         result = promote(out, args.public, args.staging, RealGit(Path.cwd()),
                          message=f"data: update TFDA clinical trial dataset {build_date}")

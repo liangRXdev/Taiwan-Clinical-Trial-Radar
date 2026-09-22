@@ -52,6 +52,7 @@ class ErrorCode(str, Enum):
     ID_TRUNCATION_COLLISION = "ID_TRUNCATION_COLLISION"
     INTEGRITY_DIGEST = "INTEGRITY_DIGEST"
     PROMOTION_FAILED = "PROMOTION_FAILED"
+    BASELINE_MOVED = "BASELINE_MOVED"
 
 
 LAYER_OF: dict[ErrorCode, Layer] = {
@@ -71,6 +72,7 @@ LAYER_OF: dict[ErrorCode, Layer] = {
     ErrorCode.ID_TRUNCATION_COLLISION: Layer.CONTENT,
     ErrorCode.INTEGRITY_DIGEST: Layer.PUBLISH,
     ErrorCode.PROMOTION_FAILED: Layer.PUBLISH,
+    ErrorCode.BASELINE_MOVED: Layer.PUBLISH,
 }
 
 # 相異的非零 exit code。數字本身不具規範意義，只有「非零且兩兩相異」是契約。
@@ -92,6 +94,7 @@ EXIT_CODE_OF: dict[ErrorCode, int] = {
     ErrorCode.ID_TRUNCATION_COLLISION: 23,
     ErrorCode.INTEGRITY_DIGEST: 24,
     ErrorCode.PROMOTION_FAILED: 25,
+    ErrorCode.BASELINE_MOVED: 26,
 }
 
 
