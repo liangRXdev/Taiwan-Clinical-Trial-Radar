@@ -2,9 +2,13 @@
 
 台灣藥品臨床試驗檢索站。Python ETL（build-time）+ TypeScript 靜態前端 + GitHub Actions，部署 **Cloudflare Pages**。只用 TFDA dataset 205。
 
-**現況：M0.5 結案。** A 群 fixture 補齊（73 列／45 Trial）、最小 artifact 樣本、B 群失敗注入 fixture、§9.3.6 不變量反例與 C4 mutation 全部完成，規格經四輪覆審定案 **v0.7**（Blocker 走勢 2→0→1→0）。**M1 的 ETL 主體已完成**：`trial_radar/` 十個模組 ＋ `scripts/build_data.py`，**pytest 141 綠**、fixture 自檢 289 條斷言全綠。下一步是補 fetch/validate CLI、首次連網實跑，然後 M2 前端。
+**現況：M0–M3 完成並上線**（2026-09-22）。站台 <https://taiwan-clinical-trial-radar.pages.dev>（Cloudflare Pages，Direct Upload ＋ Actions），repo public。規格經**五輪**覆審定案 **v0.9**。
 
-**唯一具規範效力的規格是 `.ai-review/plan.md` v0.7，動工時直接依 §14 的 14 項契約表實作，不要重新推導。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2–v0.6 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
+已發布 `datasetVersion=ef785e7addff8596`／5,888 Trial／18,736 列。
+**pytest 243／vitest 211／Playwright 69**、fixture 自檢 289 條斷言全綠；CI 七個 gate 全綠。
+下一步是 M4 收尾（README 已更新、已併入 pharmacy-portal、規格符合度稽核進行中）。
+
+**唯一具規範效力的規格是 `.ai-review/plan.md` v0.9，動工時直接依 §14 的 14 項契約表實作，不要重新推導。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2–v0.8 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
 
 ---
 
@@ -75,16 +79,31 @@
 
 v0.3 曾要求「搜尋涵蓋全部歷史 × 7 欄」，實測索引 **6,958 KiB gzip**，是 payload 預算的 4.6 倍——該要求與 F1 不可能同時成立。
 
-現行：預設 `fields=short`（5 短欄）＋ `history=latest`（最新 cohort），實測 `trials-index` 含搜尋文字為 **1,236 KiB gzip**。擴大 scope 的控制項**必須在結果區可見**、切換前顯示下載大小（取自 `manifest.files[*].gzipBytes`，**不可前端寫死**）、結果區持續顯示目前範圍。預設縮小若不可見，就是靜默漏報。
+現行：預設 `fields=short`（5 短欄）＋ `history=latest`（最新 cohort），該索引已內含在冷啟動必載的 `trials-index` 裡。擴大 scope 的控制項**必須在結果區可見**、切換前顯示下載大小（取自 `manifest.files[*].brotliBytes`，**不可前端寫死**）、結果區持續顯示目前範圍。預設縮小若不可見，就是靜默漏報。
 
-實測各層 gzip：`all`+`latest` 2,044 KiB／`short`+`all` 1,649 KiB／`all`+`all` 另加 5,389 KiB。
+**UI 顯示的大小改用 `brotliBytes`（v0.9）**：部署端對 JSON 實際送 brotli，拿 gzip 數字給使用者看等於報一個他不會付的成本。但那仍是**建置期 q11 估算值**，實際傳輸更大（見下）。
 
 ### 2g. payload 的兩個反直覺實測
 
 - **`recordIds` 放進 index 很貴**：18,736 個高熵 hex 壓縮率差，使 `trials-index` 由 1,236 → 1,535 KiB gzip。已移入 shard（只有詳情頁用得到），index 只留計數 ＋ 不變量防漂移。
 - **拆檔會變大不會變小**：卡片 903 ＋ 搜尋文字 693 = 1,596 KiB > 合併的 1,236 KiB。拆開失去跨欄位壓縮共享。所以 `searchShortLatest` 留在 index 內。
 
-F1 的 Tier 0 門檻是 **≤1.5 MB gzip**（基線 1,236 KiB）。v0.4 曾寫 1.0 MB，那是用估算基線訂的，實測後改正。
+F1 的 Tier 0 門檻是 **≤ 1,500,000 bytes，量部署端實收位元組**（不是 gzip、也不是建置期估算）。
+
+**2026-09-22 對真實部署量過，這是唯一有效的 F1 判定**（`scripts/measure-f1-live.mjs`）：
+
+| | 實收 brotli |
+|---|---:|
+| `trials-index` | 1,426,537 |
+| bundle | 13,803 |
+| manifest ＋ stats | 11,412 |
+| **合計** | **1,451,752**／門檻 1,500,000（餘裕 3.2%） |
+
+**兩個必須記住的數字關係**：
+- **建置期 q11 估算 936,731 vs 實收 1,426,537，差 52%。** Cloudflare 動態壓縮約 q4–q5。任何以 `brotliBytes` 申報的預算都要打對折看，**不得以它宣告 F1 通過**。
+- **第一次量到 3,940,752（超標 2.4 MB），最大單項不是資料是 Google Fonts**（CJK subset 2,489,933／63%）。改系統字型堆疊後歸零，故本站**不載入任何外部資源**，`tests/web/inventory.test.ts` 有靜態守門。
+
+**現在瓶頸完全是 `trials-index`（佔 98%）**，上游資料再長就會再次超標——減肥或改分片列為獨立案。
 
 ### 3. 來源沒有 `執行狀態` 欄位
 
@@ -145,12 +164,12 @@ v0.1 曾寫「`0` 不可自動視為 missing」，那條**只對數值欄位成�
 ## 資料規模的實務含意
 
 - 解壓後 166 MB，單列 `納入條件`／`排除條件` 最長 **22,490 字元**。前端絕不解析原始 CSV。
-- `trials-index`（含 `searchShortLatest`、不含 `recordIds`）實測 **1,236 KiB gzip**，F1 的 Tier 0 門檻 ≤1.5 MB。長文字走按需載入 shard。**改動 index 欄位清單時重新量測**——v0.4 就是憑估算值訂了做不到的 1.0 MB 門檻。
+- `trials-index`（含 `searchShortLatest`、不含 `recordIds`）**部署端實收 1,426,537 bytes**，而 F1 的 Tier 0 門檻是 1,500,000——它一個檔就佔 98%。長文字走按需載入 shard。**改動 index 欄位清單時要重新對真實部署量**（`node scripts/measure-f1-live.mjs <url>`），不可用建置期的 `brotliBytes` 交差——v0.4 憑估算值訂了做不到的 1.0 MB 門檻，v0.7 用 gzip 申報，兩次都是同一個錯。
 - 本機跑 ETL 前先確認 stdout 已 UTF-8 reconfigure；Windows 主控台預設 Big5，直接印中文欄名會變亂碼（除錯時把結果寫成 UTF-8 檔再讀，不要靠終端輸出判斷資料對錯）。
 
 ## 文件慣例
 
-- `.ai-review/plan.md` — **唯一 normative 規格**（v0.5）。驗收條件有可引用編號 A1–H5，**十項動工前契約見 §14**，`/codex-review` 的規格符合度稽核以它為基準。
+- `.ai-review/plan.md` — **唯一 normative 規格**（v0.9）。驗收條件有可引用編號 A1–H5，**14 項動工前契約見 §14**，`/codex-review` 的規格符合度稽核以它為基準。
 - `.ai-review/fixture-findings-a.md` — A 群 fixture 反驗規格的結果（7 個洞，全部結案）。
 - `.ai-review/fixture-findings-m05.md` — M0.5 的結果（GAP-8／9／10，**全部 open**）。
 - `.ai-review/plan-review-*.md` — Codex 原始輸出，原封不動落檔。
