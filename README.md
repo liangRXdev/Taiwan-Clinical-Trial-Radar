@@ -1,153 +1,155 @@
 # Taiwan Clinical Trial Radar
 
-台灣藥品臨床試驗檢索工具。把 TFDA 公開的臨床試驗審查資料轉成可搜尋、可篩選、可追溯資料日期的靜態網頁。
+**English** | [繁體中文](README.zh-TW.md)
 
-**狀態：已上線** → <https://taiwan-clinical-trial-radar.pages.dev>
+A search tool for drug clinical trials in Taiwan. It turns the clinical trial review data published by the Taiwan Food and Drug Administration (TFDA) into a static website that is searchable, filterable and traceable to its data date. The site is in Traditional Chinese.
+
+**Status: live** → <https://taiwan-clinical-trial-radar.pages.dev>
 
 | | |
 |---|---|
-| 目前資料 | `資料更新時間` 最新為 **2026-08-17**（5,888 個試驗／18,736 筆審查紀錄） |
-| 更新頻率 | 每月 1 日自動抓取；內容無變動時不發布 |
-| 規格 | [`.ai-review/plan.md`](./.ai-review/plan.md) **v0.9**（唯一具規範效力的版本） |
-| 待辦／進度 | [`TODO.md`](./TODO.md)／[`PROGRESS.md`](./PROGRESS.md) |
+| Current data | Latest `資料更新時間` (data update time) is **2026-08-17** (5,888 trials / 18,736 review records) |
+| Update frequency | Fetched automatically on the 1st of each month; nothing is published if content is unchanged |
+| Specification | [`.ai-review/plan.md`](./.ai-review/plan.md) **v0.9** (the only normative version) |
+| To-do / progress | [`TODO.md`](./TODO.md) / [`PROGRESS.md`](./PROGRESS.md) |
 
-> `Taiwan-Clinical-Trial-Radar-spec.md` 是 2026-09-12 的初版草稿，已被實測與覆審推翻多處，**保留為歷史文件、無規範效力**。
+> `Taiwan-Clinical-Trial-Radar-spec.md` is the initial draft of 2026-09-12. Many parts of it were overturned by measurement and review; it is **kept as a historical document and has no normative force**.
 
 ---
 
-## 這個工具回答什麼
+## What this tool answers
 
-1. 台灣有哪些經衛福部審查的藥品臨床試驗？
-2. 某疾病、試驗名稱、protocol number 或申請者涉及哪些試驗？
-3. 試驗期別、規模、期間、預計收案數、主要評估指標與納入／排除條件為何？
-4. 公開資料更新到何時、該去哪裡確認最新狀態？
+1. Which drug clinical trials in Taiwan have been reviewed by the Ministry of Health and Welfare?
+2. Which trials involve a given disease, trial title, protocol number or applicant?
+3. What are a trial's phase, size, period, planned enrollment, primary endpoints and inclusion/exclusion criteria?
+4. How current is the public data, and where should you confirm the latest status?
 
-定位是**臨床人員的資訊檢索工具**，不是病人試驗媒合器。
+It is positioned as **an information-retrieval tool for clinicians**, not a patient trial-matching service.
 
-## 這個工具明確不做
+## What this tool explicitly does not do
 
-- 不判定受試者適格性，不收病歷、不收自由文字病況。
-- 不顯示「正在招募」標章——**來源資料沒有執行狀態欄位**（詳下）。
-- 不推論療效、安全性，也不表示試驗藥品已獲 TFDA 上市核准。
-- 不做試驗優先排序或品質評分。
-- 不蒐集搜尋字串、IP 或 analytics。
+- It does not judge participant eligibility, and collects no medical records or free-text conditions.
+- It shows no "recruiting" badge — **the source data has no execution-status field** (see below).
+- It does not infer efficacy or safety, and does not imply that investigational drugs have TFDA marketing approval.
+- It does not prioritize or quality-score trials.
+- It collects no search strings, IPs or analytics.
 
-## 資料來源
+## Data Source
 
-| 資料集 | ID | 授權 |
+| Dataset | ID | License |
 |---|---:|---|
-| 台灣藥品臨床試驗現況 | 205 | 政府資料開放授權條款－第 1 版 |
+| Current status of drug clinical trials in Taiwan (台灣藥品臨床試驗現況) | 205 | Open Government Data License, version 1.0 |
 
-- 匯出端點：`https://data.fda.gov.tw/data/opendata/export/205/csv`（回傳 ZIP）
-- 資料集頁面：`https://data.gov.tw/dataset/177198`
+- Export endpoint: `https://data.fda.gov.tw/data/opendata/export/205/csv` (returns a ZIP)
+- Dataset page: `https://data.gov.tw/dataset/177198`
 
-MVP **只使用 dataset 205**。同系列的 206（宣稱適應症）、207（執行機構）、208（試驗藥品）、209（主成分）四份匯出檔**沒有任何可驗證的 trial identifier**，筆數也彼此不一致（512,140／27,774／28,800 等），無法安全對應回個別試驗。本專案已決定不納入這四份資料，也不以列序、名稱相似度或筆數分組推測關聯。
+The MVP **uses dataset 205 only**. The four related exports — 206 (claimed indications), 207 (sites), 208 (investigational products) and 209 (active ingredients) — **have no verifiable trial identifier**, and their row counts don't agree with each other (512,140 / 27,774 / 28,800, etc.), so they cannot be safely mapped back to individual trials. The project has decided not to include them, and does not guess relationships by row order, name similarity or grouped counts.
 
-## 實測資料樣貌（2026-09-18 下載）
+## What the Data Actually Looks Like (downloaded 2026-09-18)
 
-| 項目 | 實測值 |
+| Item | Measured |
 |---|---|
-| CSV 檔名 | `205_2.csv`（UTF-8 with BOM） |
-| ZIP／解壓後大小 | 42 MB／166 MB |
-| 資料列數 | 18,736 |
-| 欄位數 | 16 |
-| 不同 protocol number | 5,882（另有 6 列 protocol 為空） |
-| `資料更新時間` 範圍 | 2024/12/20 – 2026/08/17 |
+| CSV file name | `205_2.csv` (UTF-8 with BOM) |
+| ZIP / unzipped size | 42 MB / 166 MB |
+| Data rows | 18,736 |
+| Columns | 16 |
+| Distinct protocol numbers | 5,882 (plus 6 rows with an empty protocol) |
+| `資料更新時間` range | 2024/12/20 – 2026/08/17 |
 
-### 一列不是一個試驗
+### One row is not one trial
 
-**這是本專案最重要的資料事實。** 18,736 列只對應 5,882 個 protocol number：
+**This is the most important data fact in the project.** The 18,736 rows map to only 5,882 protocol numbers:
 
-- 2,821 個 protocol 有多列，最多一個 protocol 出現 **23 次**。
-- 這些重複列**不是純重複**：2,821 組裡只有 61 組 16 欄全部相同。
-- 差異最多的欄位是 `資料更新時間`（2,737 組）、`納入條件`（1,927 組）、`排除條件`（1,908 組）、`台灣預計受試者人數`（395 組），甚至 `臨床試驗期別`（102 組）也會變。
+- 2,821 protocols have multiple rows; one protocol appears up to **23 times**.
+- These repeated rows are **not pure duplicates**: of the 2,821 groups, only 61 have all 16 columns identical.
+- The columns that differ most are `資料更新時間` (update time, 2,737 groups), `納入條件` (inclusion criteria, 1,927 groups), `排除條件` (exclusion criteria, 1,908 groups), `台灣預計受試者人數` (planned Taiwan enrollment, 395 groups), and even `臨床試驗期別` (trial phase, 102 groups) changes.
 
-結論：**一列 = 一筆審查紀錄，不是一個試驗。** 本站因此以 protocol number 收斂為約 5,888 個試驗單位，並保留全部審查紀錄供比對。
+Conclusion: **one row = one review record, not one trial.** The site therefore consolidates by protocol number into about 5,888 trial units and keeps all review records for comparison.
 
-（「一列 = 某一版計畫書」是合理推論但資料未證實，所以本站一律用中性措辭「審查紀錄」，不稱「第 N 版」。）
+("One row = one protocol version" is a reasonable inference but not proven by the data, so the site always uses the neutral term "review record" and never says "version N".)
 
-`TFDA收文號` 不能當主鍵：有 2,788 個重複鍵、266 筆空值，且有 30 筆值為 `移案BPA` 這類非數字字串。
+`TFDA收文號` (TFDA receipt number) can't be a primary key: it has 2,788 duplicate keys, 266 blanks, and 30 non-numeric values such as `移案BPA`.
 
-### 同一天有多筆不一致的紀錄時，本站不挑一個給你看
+### When one day has several inconsistent records, the site doesn't pick one for you
 
-`資料更新時間` 只有日期精度，沒有時間或版號。2,821 個多列 protocol 裡有 846 組最新日期是平手的：
+`資料更新時間` has only date precision, with no time or version number. Of the 2,821 multi-row protocols, 846 groups tie on the latest date:
 
-- **689 組（81%）** 平手的紀錄 16 欄完全相同 → 直接顯示共同值
-- **157 組** 原文有差異，其中 **143 組**依語意比較鍵仍然衝突 → `納入條件` 74 組、`台灣預計受試者人數` 21 組（如同日兩筆寫 `19` 與 `31`）、`臨床試驗期別` 3 組（如 `Phase Ⅱ` 對 `Phase Ⅰ,Phase Ⅱ`）
-- 另 14 組只差空白或全半形 → 視為**不衝突**，否則假警報會讓人學會忽略警示
+- **689 groups (81%)** have tied records identical in all 16 columns → the shared value is shown directly
+- **157 groups** differ in the raw text; **143** of them still conflict by semantic comparison key → `納入條件` in 74 groups, `台灣預計受試者人數` in 21 (e.g. two same-day records saying `19` and `31`), `臨床試驗期別` in 3 (e.g. `Phase Ⅱ` vs `Phase Ⅰ,Phase Ⅱ`)
+- The other 14 differ only in whitespace or full-/half-width characters → treated as **non-conflicting**; otherwise false alarms would teach people to ignore warnings
 
-資料裡沒有任何欄位能判斷哪一筆是現行的。因此那 143 組**不會**被任意挑一筆呈現：結果卡只顯示沒有衝突的共同欄位，衝突欄位標示「同日多筆資料不一致，請展開確認」，詳情頁並列全部紀錄並明示**順序未知**。
+No column in the data can tell which record is current. So those 143 groups are **not** shown by arbitrarily picking one: result cards show only the non-conflicting shared fields, conflicting fields are marked "multiple inconsistent records on the same day — expand to check", and the detail page lists all records side by side, stating explicitly that **the order is unknown**.
 
-同理，本站**不顯示方向性的變更箭頭**（如「20 → 30」）——同日平手時方向可能是反的。只會標示「哪些欄位存在不同值」。
+Likewise, the site **shows no directional change arrows** (such as "20 → 30") — on a same-day tie the direction could be reversed. It only marks which fields have differing values.
 
-### 同一個試驗可能有兩筆（18 組已知）
+### The same trial may appear twice (18 known groups)
 
-計畫書編號的主鍵只做 `strip + NFKC + 大寫`，**刻意不剝標點、不壓空白**——自動合併不同的編號會誤配，那比重複更危險。代價是同一個試驗的不同寫法會成為兩筆：
+The protocol-number primary key is only normalized with `strip + NFKC + uppercase`, **deliberately without stripping punctuation or collapsing whitespace** — automatically merging different numbers would cause mismatches, which is more dangerous than duplication. The cost is that different spellings of the same trial become two entries:
 
-- `MK-3475-158` / `MK3475-158`（少一個連字號）
-- `9785-CL- 0123` / `9785-CL-0123`（多一個空格）
-- `ROR-PH-301(APD811-301` / `ROR-PH-301(APD811-301)`（括號未閉合）
-- `LOXO-RET-17001 (J2G-OX-JZJA)` / `LOXO-RET-17001（J2G-OX-JZJA）`（全形括號）
-- `BGB-16673-303` / `刪_BGB-16673-303`（上游的刪除標記前綴）
+- `MK-3475-158` / `MK3475-158` (one hyphen missing)
+- `9785-CL- 0123` / `9785-CL-0123` (an extra space)
+- `ROR-PH-301(APD811-301` / `ROR-PH-301(APD811-301)` (unclosed parenthesis)
+- `LOXO-RET-17001 (J2G-OX-JZJA)` / `LOXO-RET-17001（J2G-OX-JZJA）` (full-width parentheses)
+- `BGB-16673-303` / `刪_BGB-16673-303` (an upstream deletion-marker prefix)
 
-本站**不自動合併，但會主動揭露**：詳情頁顯示「其他寫法近似的計畫書編號」與連結，由你判斷是否為同一試驗。
+The site **does not merge automatically, but discloses proactively**: the detail page shows "protocol numbers with similar spellings" with links, and you decide whether they are the same trial.
 
-### 有些紀錄的計畫書編號欄位不是編號
+### Some records' protocol-number field isn't a number
 
-實測 9 列的該欄位填的不是編號，包含上游測試資料（`系統測試`、`計畫書編號系統測試`、`臨床試驗計畫初版編號`）、真實試驗但未給編號（`未列編號`、`科技部研究計畫(申請中)`、`IRB編號：...`），以及填錯欄位（把申請者名稱填進編號欄）。
+In 9 rows the field contains something other than a protocol number, including upstream test data (`系統測試`, `計畫書編號系統測試`, `臨床試驗計畫初版編號`), real trials without a number (`未列編號`, `科技部研究計畫(申請中)`, `IRB編號：...`), and wrong-field entries (applicant name typed into the number field).
 
-本站**不刪除這些資料**（刪資料就是改寫上游），但會標示「來源未提供計畫書編號」、歸入統計的「未提供編號」類別，且不接受它們作為 `?protocol=` 查詢值。
+The site **does not delete these rows** (deleting data would be rewriting the upstream), but labels them "source did not provide a protocol number", counts them under "no number provided" in statistics, and does not accept them as `?protocol=` query values.
 
-### 收案人數寫成範圍時（1,340 筆）
+### When enrollment is written as a range (1,340 rows)
 
-`台灣預計受試者人數` 有 1,340 筆（7.2%）寫成範圍，例如 `20-40`、`8-12`。本站把嚴格範圍讀成區間，篩選時以**區間重疊**判定——一筆 `20-40` 會同時出現在「11–30 人」與「31–100 人」的結果中，卡片則顯示原文 `20-40`，你看得出它是區間而非單一數字。
+`台灣預計受試者人數` is written as a range in 1,340 rows (7.2%), e.g. `20-40`, `8-12`. The site reads strict ranges as intervals and filters by **interval overlap** — a `20-40` row appears in both the "11–30" and "31–100" results, and the card shows the raw `20-40` so you can see it is an interval, not a single number.
 
-但 `約400`、`至少480`、`148(最多266)` 這類**不做解析**：把 `約400` 讀成 400 會丟掉「約」，那是推論而非資料。這些會顯示原文並標示「來源以文字描述人數」，篩選時歸入「未提供」。
+But values like `約400` (about 400), `至少480` (at least 480) and `148(最多266)` (148, max 266) are **not parsed**: reading `約400` as 400 would drop the "about", which is inference, not data. They are shown as raw text labelled "source describes enrollment in words" and filed under "not provided" when filtering.
 
-### 搜尋範圍預設是縮小的
+### The default search scope is narrowed
 
-搜完整索引（全部 18,736 筆審查紀錄 × 7 個欄位）要多下載**至少 4.1 MB**（建置期估算，實際傳輸更大），手機上不可接受。因此預設只搜**最新審查紀錄**的 5 個欄位（計畫書編號、試驗名稱、申請者、適應症、TFDA 收文號）——那份索引已經內含在冷啟動必載的 `trials-index` 裡，擴大範圍才需要額外下載。
+Searching the full index (all 18,736 review records × 7 fields) requires downloading **at least 4.1 MB** more (build-time estimate; actual transfer is larger), which is unacceptable on phones. So by default the search covers only 5 fields of the **latest review record** (protocol number, trial title, applicant, indication, TFDA receipt number) — that index is already part of the `trials-index` required at cold start; only widening the scope needs extra downloads.
 
-`試驗目的`、`主要評估指標` 與**歷史審查紀錄**需要手動擴大範圍才會納入，控制項就在搜尋結果區、並會先告知需下載多少。零結果時也會提示可以擴大到哪裡——**預設縮小不會被藏起來**。
+`試驗目的` (trial objective), `主要評估指標` (primary endpoints) and **historical review records** are included only after manually widening the scope; the control sits in the search results area and tells you up front how much will be downloaded. A zero-result search also suggests where you could widen to — **the narrowed default is never hidden**.
 
-### 試驗 ID 的穩定性界限
+### Stability limits of trial IDs
 
-本站的 Trial／紀錄 ID 由來源內容推導，**只保證對相同來源快照穩定**。上游若重排、增刪或修改欄位，ID 可能變動；不要把 ID 當成跨時間指向同一實體的永久識別碼。分享連結時建議同時保留 protocol number。
+The site's trial / record IDs are derived from source content and are **only guaranteed stable for the same source snapshot**. If upstream reorders, adds, removes or edits fields, IDs may change; don't treat them as permanent identifiers of the same entity over time. When sharing links, keep the protocol number as well.
 
-### 來源沒有執行狀態
+### The source has no execution status
 
-官方資料集頁面提及 `執行狀態`，但**實際匯出的 16 個欄位裡沒有這一欄**。因此本站不提供 Recruiting／Active 篩選，也不顯示招募中標章，且不保留任何相關的 feature flag。
+The official dataset page mentions `執行狀態` (execution status), but **that column is not among the 16 actually exported**. So the site offers no Recruiting / Active filter, shows no recruiting badge, and keeps no related feature flag.
 
-**TFDA 審查通過 ≠ 目前正在招募。** 資料中最舊的紀錄可追溯至 2024/12/20，許多試驗的收案狀態早已改變。
+**Passing TFDA review ≠ currently recruiting.** The oldest records go back to 2024/12/20, and many trials' enrollment status has long since changed.
 
-## 技術架構
+## Technical Architecture
 
-- 資料管線：Python 3.12+，build-time 產生靜態 JSON 分片
-- 前端：TypeScript，無 runtime API、無後端、無資料庫
-- 測試：pytest + Vitest／Playwright
-- 部署：**Cloudflare Pages**（獨立 origin）
-- 自動化：GitHub Actions（CI + 月更新）
+- Data pipeline: Python 3.12+, generating static JSON shards at build time
+- Frontend: TypeScript, no runtime API, no backend, no database
+- Tests: pytest + Vitest / Playwright
+- Deployment: **Cloudflare Pages** (dedicated origin)
+- Automation: GitHub Actions (CI + monthly update)
 
-前端不載入 166 MB 原始 CSV。payload 採**分層預算**：預設搜尋範圍的冷啟動 **≤ 1,500,000 bytes**，擴大搜尋範圍與詳情長文字（單列最長 22,490 字元）走按需載入。
+The frontend never loads the 166 MB raw CSV. The payload uses a **tiered budget**: cold start for the default search scope **≤ 1,500,000 bytes**, with the widened search scope and long detail text (longest single row 22,490 characters) loaded on demand.
 
-門檻量的是**部署端實際 response 的實收位元組**，不是建置期的壓縮估算值——同一份位元組兩種算法可以差五成，量一個使用者從來不會付的數字沒有意義。2026-09-22 實測（冷啟動到可搜尋為止的全部 network response）：
+The threshold measures **the bytes actually received from deployed responses**, not a build-time compression estimate — the same bytes can differ by 50% between the two methods, and measuring a number no user ever pays is meaningless. Measured on 2026-09-22 (all network responses from cold start until search is ready):
 
-| | 實收 brotli |
+| | Received (brotli) |
 |---|---:|
 | `trials-index` | 1,426,537 |
-| bundle（JS＋CSS＋HTML） | 13,803 |
-| `manifest` ＋ `stats` | 11,412 |
-| **合計** | **1,451,752**（餘裕 3.2%） |
+| bundle (JS + CSS + HTML) | 13,803 |
+| `manifest` + `stats` | 11,412 |
+| **Total** | **1,451,752** (3.2% headroom) |
 
-**站台不載入任何外部資源**，包含網頁字型。改用系統字型堆疊前，Google Fonts 的 CJK subset 佔冷啟動的 63%（2.49 MB），比整個資料層還大；順帶也不再把使用者 IP 與 UA 送給第三方。
+**The site loads no external resources**, including web fonts. Before switching to a system font stack, the Google Fonts CJK subset was 63% of the cold start (2.49 MB), larger than the entire data layer; as a side effect, user IP and UA are no longer sent to a third party.
 
-所有資料檔採內容雜湊檔名，由 `manifest.json` 這個唯一固定 URL 解析——避免瀏覽器或 CDN 快取混用不同版本的索引與分片而顯示錯誤紀錄。
+All data files use content-hashed file names resolved via `manifest.json`, the only fixed URL — this prevents browser or CDN caches from mixing different versions of the index and shards and showing the wrong records.
 
-## 授權
+## License
 
-- 程式碼：見 `LICENSE`。
-- 資料：來源為 TFDA 公開資料，依「政府資料開放授權條款－第 1 版」。再利用請保留來源聲明。
+- Code: see `LICENSE`.
+- Data: sourced from TFDA open data under the Open Government Data License, version 1.0. Please keep the source attribution when reusing.
 
-## 免責聲明
+## Disclaimer
 
-> 本站為政府開放資料之整理與檢索工具，不代表 TFDA 或任何醫療機構。**本站不提供目前招募狀態**；**試驗中使用的藥品不代表已獲 TFDA 上市核准**。資料可能有更新延遲，試驗狀態及收案資格請向官方資料來源、試驗執行機構與醫療專業人員確認。本工具不提供醫療建議或受試者適格性判定。
+> This site organizes and searches government open data and does not represent the TFDA or any medical institution. **It does not provide current recruitment status**; **drugs used in trials are not thereby approved for marketing by the TFDA**. Data may be delayed; confirm trial status and eligibility with the official data source, trial sites and healthcare professionals. This tool provides no medical advice or participant eligibility determination.
