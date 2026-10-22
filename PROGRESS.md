@@ -8,7 +8,9 @@
 - 預期實資料：370 → 360 bucket。
 - 驗證：pytest 300 passed（另 2 條 schema 對齊依「資料先行」預期紅，待月更新重建）、vitest 251、ruff、build 通過；categoryOf／stats 分組／I6 對帳三處各做變異，皆被殺。
 - **上線流程**：merge 後 CI 紅在 schema 對齊 → 手動 dispatch `月更新資料` → 資料 commit 落地後部署自動跟上。
-- 未做：舊分享連結帶旁支 raw 值時不對應 bucket（併入 review #3）；`/codex-checkplan` 審 v0.10 修訂本身。
+- 第六輪 `/codex-checkplan`（`gpt-6-astra`；預設 `gpt-6.1-sol` 經 MCP 以 ChatGPT 帳號回 400）：接受 7／部分接受 5／拒絕 0，Blocker 0／High 0。主要補：空白集合封閉為 `White_Space=Yes`（原用 `\s`，含 U+001C–U+001F）、純空白申請者歸未提供（原會產生 `""` bucket）、`facetKeys` 鍵集合封閉、新增驗收 **D9** 與 B6 的 8 個 I6 反例。I6 四個子檢查各自變異皆被殺。
+- 驗證（r6 修訂後）：pytest 317 passed（3 條預期紅：schema 對齊 2、fixture 版控 1 於 commit 後消失）、vitest 255、Playwright 30＋45（以 `e2e:data` fixture，同 CI）。
+- 未做：舊分享連結帶旁支 raw 值仍呈現普通零結果——**已知違反 §7.4**，追蹤於 review #3。
 
 ## 2026-10-22 四項測試 oracle 補強
 

@@ -85,7 +85,7 @@
 | `looseKey(s)` | `nfkc(s)` 後移除**所有非 ASCII 英數字元**，再轉大寫。**僅用於偵測近似 protocol，絕不用於收斂** |
 | `conflictText(s)` | `nfkc(s)` 後移除**全部空白**（含全形空白）。用於 §6.4 文字欄位的比較鍵 |
 | `searchNormalize(s)` | `nfkc(strip(s))` → casefold → 內部連續空白壓為單一空格。見 §8.1 |
-| `facetNormalize(s)` | `nfkc(s)` → 內部連續空白壓為單一空格 → `strip`。**不做 casefold**（鍵原樣當篩選選項標籤顯示；實測不多合併任何一組）。**只用於 applicant facet 的分組鍵**（§9.3.5），不用於收斂、搜尋或衝突判定（v0.10） |
+| `facetNormalize(s)` | `nfkc(s)` → 內部連續空白壓為單一 U+0020 → `strip`。**兩步的「空白」都是 `strip` 列的同一封閉集合**（`White_Space=Yes`）；零寬字元與集合外控制字元（如 U+001C–U+001F）**不壓縮、不移除**。**不做 casefold**（鍵原樣當篩選選項標籤顯示；實測不多合併任何一組）。結果可能為空字串（typed 只有空白），見 §9.3.5 的歸類順序。**只用於 applicant facet 的分組鍵**，不用於收斂、搜尋或衝突判定（v0.10，r6 R6-1） |
 
 **`strip` 必須封存字元集合（v0.9）**：v0.8 把 `strip(raw)` 升格為「合併或硬失敗」的邊界，而在那之前它只是正規化的一個步驟，定義模糊無害。現在它決定 Trial membership、`trialId` 與 URL——不同 runtime 對 NBSP 與零寬字元的處理若有差異，同一份快照會產出不同的 Trial 集合。**零寬字元刻意排除在 strip 之外**：它們不可見，把不可見差異靜默合併等於讓兩個不同計畫書變成一個，而 fail-closed 的代價只是一次人工確認。
 
@@ -278,7 +278,9 @@ Trial（在 trials-index.json 內）
   latestAmbiguous        latestCohortCount > 1 且呈現欄位（依 §6.4.2 比較鍵）有衝突時為 true
   conflictFields[]       衝突的呈現欄位名（**全部 13 個**呈現欄位皆可入列），依 canonical 欄位順序
   displayFields          見 §6.4.5。**只含 9 個卡片欄位，不含 4 個長文字欄位**
-  facetKeys              {欄位名: 分組鍵}，**稀疏**：只在 facetNormalize(typed) ≠ typed 時出現，全無則省略（v0.10，§9.3.5）
+  facetKeys              {"臨床試驗申請者": 分組鍵}，**稀疏**；鍵集合封閉為這一個欄位名，不得有其他鍵、不得為空物件。
+                         只在 facetNormalize(typed) ≠ typed 時出現（含分組鍵為 "" 者）；省略時分組鍵即 typed。
+                         衝突或 typed 為 null 者不得帶（v0.10，§9.3.5，r6 R6-3）
   searchShortLatest      見 §9.3.4
   shard                  shardKey
 ```
@@ -440,7 +442,7 @@ raw 一律照顯示，**不得輸出失真數字**。實測兩欄最大值為 10
 | 功能 | 資料層 |
 |---|---|
 | 結果卡欄位 | `displayFields` ＋ `latestAmbiguous`／`dateUnknown`／`protocolNonIdentifier` 標記 |
-| 篩選 | `displayFields` 的 typed 值。衝突欄位的 trial 在該維度歸入「同日多筆不一致」分組，**不任取一值** |
+| 篩選 | `displayFields` 的 typed 值；**applicant 改用 §9.3.5 的分組鍵**（v0.10）。衝突欄位的 trial 在該維度歸入「同日多筆不一致」分組，**不任取一值** |
 | 統計卡 | 以 **Trial** 為分母並明寫「試驗」；衝突、sentinel、`protocolNonIdentifier` 各歸入明確的「未提供／不一致／未提供編號」類別。另可提供以「審查紀錄」為分母的次要統計，須明確標示分母 |
 | 搜尋 | 依使用者選定的 **scope**（§8.5），預設為「最新 cohort × 短欄」 |
 | 詳情頁 | shard 內該 Trial 的全部 record |
@@ -479,6 +481,7 @@ canonical query string：**只輸出非預設值的參數，依本表順序排�
 - **重複參數**：同維度多值以重複參數表達（`phase=X&phase=Y`），值依字典序排列後輸出。
 - **未知參數**：忽略但保留於 URL 不改寫。
 - **無效值** → 顯示明確訊息與回搜尋入口，**不得空白頁、不得靜默回首頁、不得靜默丟棄該條件**。
+  `phase`／`scale`／`applicant` 的值**格式合法但不在目前 `stats.json` 的 bucket 中**者（含 v0.10 前分享的旁支 raw 申請者值）屬無效值，**不得以普通零結果呈現**——使用者會讀成「此申請者沒有試驗」（v0.10，r6 R6-4）。
 - **scope 必須編碼進 URL**，否則分享的連結重現不出同一結果集。
 
 ## 8. 搜尋規格
@@ -683,7 +686,7 @@ v0.4 同時要求「每個非 manifest 檔案內含 `datasetVersion`」與「`da
 
 ```json
 {
-  "schemaVersion": 1,   // 見本節末的 schemaVersion 適用說明
+  "schemaVersion": 3,   // v0.10；版本沿革與 v0.8／v0.9 不 bump 的歷史理由見 §9.3.6
   "datasetVersion": "<16 hex>",
   "artifactDigest": "<64 hex>",
   "sourceDatasetId": 205,
@@ -760,6 +763,8 @@ v0.6 曾寫成「E2 的統計卡 oracle 以本清單為唯一來源」，那會�
 
 每個 facet 的 `buckets` 計數 + `unprovided` + `conflicted` **必須等於** `denominators.trials`。
 
+**歸類順序（每個 facet、每個 Trial 恰落一類）**：(1) 欄位在 `conflictFields` → `conflicted`；(2) typed 為 `null`（含欄位缺席）→ `unprovided`；(3) 分組鍵為 `""` → `unprovided`，**不得出現 `""` bucket**（r6 R6-2）；(4) 其餘依分組鍵計入 bucket。applicant 的 `N/A`／`NA` 是**文字**（§6.6.2），各自成 bucket，不套 §6.6.1 的分類 sentinel 政策。
+
 **bucket 的分組鍵（v0.10）**：`applicant` 以 `facetNormalize(typed)` 分組，`phase`／`scale` 以 typed 分組（它們是 §6.6.1 的合法值常數，NFKC 會把 `Phase Ⅱ` 折成 `Phase II`）。鍵 ≠ typed 的 Trial 在 index 帶 `facetKeys`（§6.4.4），**前端以它比對，不自行重做正規化**——Python 與 JS 的空白類別與 NFKC 版本不保證一致，兩邊各算一次就是兩份契約。
 
 v0.9 以 raw typed 分組，實測（2026-10-22，370 bucket）7 組同一申請者只差尾隨空白／`\t`／`\r\n`／CJK 相容字（U+F9B3）而被拆開，124 個 Trial 落在旁支；最大一組勾主選項只回 162/278（漏 42%），統計卡卻照算——**數字與結果對不上而無任何提示**。卡片與詳情頁仍顯示 raw。
@@ -804,7 +809,7 @@ v0.9 以 raw typed 分組，實測（2026-10-22，370 bucket）7 組同一申請
 | I3 | **referential integrity** | 每個 `recordId` 存在於 `trial.shard` 指定的 shard；每個 record 被**恰好一個** Trial 引用**一次**（同一 Trial 內重複引用亦違規）；**shard 內不得有零 Trial 引用的 record**；`latestCohort ⊆ recordIds` | `trials-index` 與相關 shard 可讀 |
 | I4 | **計數一致** | `trial.recordCount` == 該 shard 內 `trials[trialId].recordIds` 長度；`trial.latestCohortCount` == `latestCohort` 長度。**（方案 B 的必要防漂移條件。）** | 同 I3 |
 | I5 | **排序 total order** | `trials` 依 `trialId` 昇序；`recordIds` 依（可採計日期降序、不可採計者置末、`recordId` 昇序）；`latestCohort` 依 `recordId` 昇序 | `trials` 的順序無前置；**某 Trial 的 `recordIds` 排序只在該 Trial 通過 I3 時評估**（否則取不到排序鍵） |
-| I6 | **stats 一致性** | 每個 facet 的 bucket 計數 == 依 `trials-index` 重算的結果（**分組鍵由 typed 獨立重算，不讀 `facetKeys`**）；且 `buckets + unprovided + conflicted` == `denominators.trials`（§9.3.5）；`facetKeys` == 重算鍵、鍵 == typed 時不得出現、衝突或未提供者不得帶（v0.10） | `trials-index` 與 `stats.json` 可讀。**不依賴 I3／I4／I5** |
+| I6 | **stats 一致性** | 每個 facet 的 bucket 計數 == 依 `trials-index` 重算的結果（**分組鍵由 typed 獨立重算，不讀 `facetKeys`**）；且 `buckets + unprovided + conflicted` == `denominators.trials`（§9.3.5）；空分組鍵計入 `unprovided`；`facetKeys` == 重算鍵（含 `""`）、鍵 == typed 時不得出現、衝突或 typed 為 null 者不得帶、鍵集合封閉且不得為空物件（v0.10） | `trials-index` 與 `stats.json` 可讀。**不依賴 I3／I4／I5** |
 | I7 | **`datasetVersion`／`artifactDigest`** | 依 §9.3.2 可重算且與 manifest 所載相符 | `manifest.files` 列出的檔案全部可讀。**不依賴 I3～I6** |
 | I8 | **大小 metadata 可重算**（v0.9 新增） | 每個 `manifest.files` 條目的 `bytes` == 該檔實際位元組長度；`gzipBytes` == 對該位元組的 gzip 長度；五個具名 top-level entry 的 `brotliBytes` == 對該位元組的 brotli **quality 11** 長度；`recordShards` 條目**不得**有 `brotliBytes` | 該檔可讀。**不依賴 I1～I7** |
 
@@ -999,6 +1004,14 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
   **顯示大小的驗收以「檔案集合」為單位，不是「來源是 manifest」**（v0.9）：對**每一個** `起始 scope → 目標 scope` 的轉換（含由非預設 scope 出發者），寫死 (a) 必須下載的檔案集合（依 §8.5 的集合差）、(b) 已在快取中的前提、(c) expected 總 bytes ＝ 該集合各檔 `brotliBytes` 之和、(d) UI 實際顯示的「約 X KiB」級距。
   **原文只驗「取自 manifest」，而那是一個顯示任何單一檔案數字都能通過的斷言**：由預設 scope 進入 `all`+`all` 時 UI 若只顯示 `searchLongAll.brotliBytes`，少報了 `search-short-all` 與 `search-long-latest` 共 2,173.7 KiB，照樣「取自 manifest」。**低報與高報都違反改用實際編碼的初衷。**
 - **D8 `enroll` 的區間重疊** 一筆 `台灣預計受試者人數 = "20-40"` 須**同時**出現在 `11-30` 與 `31-100` 兩個 bucket 的篩選結果中，且卡片顯示 raw `20-40`（不得顯示為單一數字）。另斷言 `numericUnparsed`／`numericImplausible` 等歸「未提供」而**不進任何數值 bucket**。
+- **D9 applicant 分組鍵**（v0.10，r6 R6-7／R6-9／R6-10／R6-11）。fixture 以**不同 Trial** 承載每個寫法，oracle 寫死精確值：
+  - **合併正例**（同一 bucket，≥3 變體）：尾隨 TAB、CRLF、前導 U+3000、前導 U+0020；另驗內部連續 NBSP 壓為一格、U+F9B3 折疊。斷言唯一 bucket 的**精確值與計數**、選取後 trialId 集合**完全相等**且數量 == bucket 計數（v0.9 實作只回 1 個，必須失敗）；canonical URL 與 reload 後結果相同
+  - **不合併反例**（四套正規化各自獨立）：`甲 乙`／`甲乙` 分屬兩 bucket（conflictText 會合併）；`ABC`／`abc` 分屬兩 bucket（search 會合併）；尾綴 U+200B 與無尾綴分屬兩 bucket；U+001C 不被壓縮
+  - **空鍵**：typed 只有空白 → 歸未提供、`facetKeys` 為 `""`、不存在 `""` 或純空白 bucket
+  - **文字 sentinel**：applicant 為 `N/A`／`NA` 各成 bucket，不歸未提供
+  - **phase／scale 不套**：`Phase Ⅱ` 的 bucket 值仍為 `Phase Ⅱ`，任何 Trial 不對它們帶 `facetKeys`
+  - **呈現**：申請者含 U+FE64／U+FE65（NFKC 後為 `<`／`>`）時篩選選項以文字呈現、不產生元素；同一變體 Trial 的卡片顯示 raw，不顯示分組鍵
+  - **B6 對 I6 的獨立反例**（每類各一，違規集合精確為 `{I6}`、digest 自洽）：鍵值錯、冗餘鍵、必要鍵缺失、衝突者帶鍵（stats 同步改為自洽）、未提供者帶鍵、封閉集合外的鍵（須用非 facet 欄位，否則被其他 facet 的對帳順帶抓到）、空物件、**stats 與 `facetKeys` 同步改為同一錯誤分組而 typed 不變**（殺讀 `facetKeys` 自證的驗證器）
 
 ### E. 呈現與誤導防範
 
@@ -1133,7 +1146,8 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
   - **§6.4.4 新增稀疏 `facetKeys`**，ETL 算、前端讀，不在兩種 runtime 各自正規化
   - **I6 擴充**：分組鍵由 typed 獨立重算（讀 `facetKeys` 等於讓 index 自證），並與 `facetKeys` 對帳
   - **schemaVersion 2 → 3**：bucket 值的語意變了。v2 前端以 typed 比對 v3 bucket，旁支 Trial 會從結果消失而統計卡照算
-  - **已知未涵蓋**：舊分享連結若帶旁支 raw 值（如尾隨 `\t`），在 v3 不對應任何 bucket——與 review #3「URL 值不在 facet」同一路徑，在那裡一併處理
+  - **已知違反 §7.4（追蹤於 review #3）**：格式合法但不在 bucket 的 URL 值（含舊分享連結的旁支 raw 申請者值）目前呈現為普通零結果。v0.9 對任何不在 facet 的值就已如此，v0.10 只是多一類來源；§7.4 已明定其屬無效值，延期**不豁免**該行為
+  - **第六輪 `/codex-checkplan`**（`plan-review-r6.md`／`plan-verdict-r6.md`，接受 7／部分接受 5／拒絕 0，Blocker 0／High 0）：§6.0 空白集合封閉（R6-1）、空分組鍵歸未提供與 §9.3.5 歸類順序（R6-2）、`facetKeys` 鍵集合封閉與 §7.1 同步（R6-3）、§7.4 不在 bucket 的值屬無效值（R6-4）、manifest 範例 schemaVersion（R6-5）、新增 **D9** 與 B6 的 I6 反例（R6-6～R6-11）
   - **教訓**：v0.9 的 I6 與 E2 都驗「計數閉合、multiset 相等」，那些在拆錯 bucket 時仍成立——規格 §9.3.5 自己寫過「三類總和閉合不構成分類正確性的證據」，但分類的**鍵**本身沒有被質疑過
 
 - **v0.9（2026-09-21）** 第五輪 `/codex-checkplan` **只審 v0.8 的修訂本身**（接受 35／部分接受 4／拒絕 0，範圍蔓延 0）。**39 項發現沒有一項是幻覺，也沒有一項是 v0.7 遺留——全部是 v0.8 修訂自己造的**，第五次應驗「修訂會製造新洞」。另有 4 處（`plan-verdict-r5.md` 的 S1–S4）是送審前自查修掉的，形狀一致：**最容易漏的是「同一個數字寫在兩個地方」**。主要變更：

@@ -10,7 +10,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-const FIXTURE_TRIALS = 55;
+const FIXTURE_TRIALS = 60;
 
 /** §8.4 的六個維度。**沒有招募／執行狀態**，D5 以此為封閉 oracle。 */
 const DIMENSIONS = ["phase", "scale", "applicant", "enroll", "period", "updated"] as const;
@@ -202,7 +202,7 @@ test.describe("D4：每個維度各一組，含 canonical URL 與 reload", () =>
     await expect(alert).toBeVisible();
     // 條件被保留（控制項仍帶原值），不是被吃掉
     expect((await checkedState(page)).updated).toEqual(["2026-12-31..2026-01-01"]);
-    // 結果為空而非全部——靜默丟棄會顯示全部 55 筆
+    // 結果為空而非全部——靜默丟棄會顯示全部 60 筆
     expect(await trialIds(page)).toHaveLength(0);
   });
 
@@ -310,5 +310,27 @@ test.describe("D5：呈現層不存在 trial-status 維度", () => {
 
   test("免責第一項在篩選頁仍可見——「沒有這個維度」要講出來，不是留白", async ({ page }) => {
     await expect(page.locator(".disclaimer").first()).toContainText("不提供試驗目前的招募狀態");
+  });
+});
+
+test.describe("D9：只差空白的申請者在真實頁面上同屬一個選項", () => {
+  // fixture 的 APPL-WS-01..03（scripts/build_web_fixture.py）：同一申請者三種寫法、三個不同 Trial
+  const BASE = "測試丙藥廠股份有限公司";
+
+  test("勾一次取回三個 Trial，canonical URL 與 reload 後結果不變", async ({ page }) => {
+    // 只有一個選項：旁支寫法不得各自成選項
+    const options = page.locator('[data-dim="applicant"] .filter__option').filter({ hasText: "測試丙藥廠" });
+    await expect(options).toHaveCount(1);
+
+    await toggle(page, "applicant", BASE);
+    const url = await query(page);
+    expect(url).toBe(`?applicant=${encodeURIComponent(BASE)}`);
+    const ids = await trialIds(page);
+    expect(ids).toHaveLength(3);
+
+    await page.reload();
+    await expect(page.locator("article.card--result").first()).toBeVisible();
+    expect(await query(page)).toBe(url);
+    expect(await trialIds(page)).toEqual(ids);
   });
 });

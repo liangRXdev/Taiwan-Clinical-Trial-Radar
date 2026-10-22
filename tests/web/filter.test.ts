@@ -87,7 +87,7 @@ describe("§8.4 enroll 的區間語意", () => {
     }
   });
 
-  it("D8：一筆 `20-40` **同時**落在 11-30 與 31-100", () => {
+  it("D9：一筆 `20-40` **同時**落在 11-30 與 31-100", () => {
     const fake = {
       conflictFields: [],
       displayFields: { 台灣預計受試者人數: { raw: "20-40", typed: { min: 20, max: 40 }, flags: ["numericRange"] } },
@@ -231,25 +231,35 @@ describe("合併後 Trial 的篩選", () => {
   });
 });
 
-describe("applicant facet：只差空白的申請者同屬一個選項（schemaVersion 3）", () => {
-  // fixture 的 APPL-WS-01／02 是兩個不同 Trial，申請者只差尾隨 " \t"（scripts/build_web_fixture.py）
+describe("D9 applicant facet：只差空白的申請者同屬一個選項（schemaVersion 3）", () => {
+  // fixture 的 APPL-WS-01..03 是三個不同 Trial，申請者分別為原形、尾隨 " 	"、前導 U+3000＋CRLF；
+  // 04 只有空白；05 含 U+FE64／U+FE65（scripts/build_web_fixture.py）
   const base = "測試丙藥廠股份有限公司";
   const field = DIMENSION_FIELD.applicant!;
+  const group = ["APPL-WS-01", "APPL-WS-02", "APPL-WS-03"];
+  const protocolsOf = (state: ReturnType<typeof emptyFilter>) =>
+    applyFilters(all, state).map((x) => x.trial.protocolRaw[0]!).sort();
 
-  it("stats 只有一個 bucket，計數涵蓋兩個 Trial", () => {
-    const hits = stats.facets.applicant!.buckets.filter((b) => b.value.startsWith(base));
-    expect(hits).toEqual([{ value: base, count: 2 }]);
+  it("stats 只有一個 bucket，值與計數精確", () => {
+    const hits = stats.facets.applicant!.buckets.filter((b) => b.value.includes("測試丙藥廠"));
+    expect(hits).toEqual([{ value: base, count: 3 }]);
   });
 
-  it("勾那一個選項就回傳兩個 Trial（v2 只回傳 1 個）", () => {
-    const state = { ...emptyFilter(), applicant: [base] };
-    const got = applyFilters(all, state).map((x) => x.trial.protocolRaw[0]);
-    expect(got.sort()).toEqual(["APPL-WS-01", "APPL-WS-02"]);
+  it("勾那一個選項取回整組，數量等於 bucket 計數（v2 只回 1 個）", () => {
+    expect(protocolsOf({ ...emptyFilter(), applicant: [base] })).toEqual(group);
   });
 
-  it("變體 Trial 的卡片顯示值仍是 raw（分組鍵不改寫原文）", () => {
+  it("只有空白的申請者歸「未提供」，不成為空白選項", () => {
+    const blank = byProtocol("APPL-WS-04");
+    expect(blank.facetKeys).toEqual({ [field]: "" });
+    expect(categoryOf(blank, field)).toBe(UNPROVIDED);
+    expect(stats.facets.applicant!.buckets.some((b) => b.value.trim() === "")).toBe(false);
+    expect(protocolsOf({ ...emptyFilter(), applicant: [UNPROVIDED] })).toContain("APPL-WS-04");
+  });
+
+  it("變體 Trial 的 displayFields 仍是 raw（分組鍵不改寫原文）", () => {
     const variant = byProtocol("APPL-WS-02");
-    expect(variant.displayFields[field]!.raw).toBe(`${base} \t`);
+    expect(variant.displayFields[field]!.raw).toBe(`${base} 	`);
     expect(categoryOf(variant, field)).toBe(base);
   });
 
@@ -259,6 +269,12 @@ describe("applicant facet：只差空白的申請者同屬一個選項（schemaV
       const c = categoryOf(t, field);
       if (c === UNPROVIDED || c === CONFLICTED) continue;
       expect(values.has(c), `${t.protocolRaw[0]} 的申請者「${c}」不在 bucket 中`).toBe(true);
+    }
+  });
+
+  it("phase／scale 不套 facet 正規化：沒有任何 Trial 對它們帶 facetKeys", () => {
+    for (const t of trials) {
+      for (const k of Object.keys(t.facetKeys ?? {})) expect(k).toBe(field);
     }
   });
 });

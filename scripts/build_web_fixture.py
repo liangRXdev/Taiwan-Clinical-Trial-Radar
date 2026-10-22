@@ -150,14 +150,24 @@ def _conflict_rows(rows: list[dict]) -> list[dict]:
 #: 申請者 facet 的空白變體（schemaVersion 3）。**兩個不同 Trial**、申請者只差尾隨 `\t`：
 #: v2 把它們拆成兩個 bucket，勾其中一個就漏另一個（實資料最大一組漏 42%）。
 APPLICANT_WS_BASE = "測試丙藥廠股份有限公司"
-APPLICANT_WS_VARIANTS = (APPLICANT_WS_BASE, APPLICANT_WS_BASE + " \t")
+#: D9：同一申請者的三種寫法，各在**不同 Trial**（尾隨 TAB、前導全形空白＋CRLF）。
+APPLICANT_WS_VARIANTS = (
+    APPLICANT_WS_BASE,
+    APPLICANT_WS_BASE + " \t",
+    "\u3000" + APPLICANT_WS_BASE + "\r\n",
+)
+#: D9／R6-2：只有空白 → typed 非空、分組鍵為 ""，必須歸「未提供」而不是一個空白選項。
+APPLICANT_BLANK = " \t"
+#: D9／R6-11：U+FE64／U+FE65 經 NFKC 變成 `<`／`>`，篩選選項必須以文字呈現。
+APPLICANT_NFKC_MARKUP = "\ufe64b\ufe65測試戊藥廠"
 
 
 def _applicant_variant_rows(rows: list[dict]) -> list[dict]:
-    """各產一列、protocol 不同的衍生資料，驗前端以 `facetKeys` 合併 bucket。"""
+    """各產一列、protocol 不同的衍生資料，驗前端以 `facetKeys` 合併 bucket（D9）。"""
     donor = next(r for r in rows if r[PROTOCOL] == "BIG-001")
     out: list[dict] = []
-    for n, applicant in enumerate(APPLICANT_WS_VARIANTS, start=1):
+    applicants = (*APPLICANT_WS_VARIANTS, APPLICANT_BLANK, APPLICANT_NFKC_MARKUP)
+    for n, applicant in enumerate(applicants, start=1):
         row = dict(donor)
         row[PROTOCOL] = f"APPL-WS-{n:02d}"
         row["TFDA收文號"] = f"WEB-FIXTURE-AW{n:02d}"
