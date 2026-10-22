@@ -10,7 +10,7 @@
 |---|---|
 | 目前資料 | `資料更新時間` 最新為 **2026-08-17**（5,888 個試驗／18,736 筆審查紀錄） |
 | 更新頻率 | 每月 1 日自動抓取；內容無變動時不發布 |
-| 規格 | [`.ai-review/plan.md`](./.ai-review/plan.md) **v0.9**（唯一具規範效力的版本） |
+| 規格 | [`.ai-review/plan.md`](./.ai-review/plan.md) **v0.10**（唯一具規範效力的版本） |
 | 待辦／進度 | [`TODO.md`](./TODO.md)／[`PROGRESS.md`](./PROGRESS.md) |
 
 > `Taiwan-Clinical-Trial-Radar-spec.md` 是 2026-09-12 的初版草稿，已被實測與覆審推翻多處，**保留為歷史文件、無規範效力**。

@@ -230,3 +230,35 @@ describe("合併後 Trial 的篩選", () => {
     expect(t.protocolRaw.length).toBeGreaterThan(1);
   });
 });
+
+describe("applicant facet：只差空白的申請者同屬一個選項（schemaVersion 3）", () => {
+  // fixture 的 APPL-WS-01／02 是兩個不同 Trial，申請者只差尾隨 " \t"（scripts/build_web_fixture.py）
+  const base = "測試丙藥廠股份有限公司";
+  const field = DIMENSION_FIELD.applicant!;
+
+  it("stats 只有一個 bucket，計數涵蓋兩個 Trial", () => {
+    const hits = stats.facets.applicant!.buckets.filter((b) => b.value.startsWith(base));
+    expect(hits).toEqual([{ value: base, count: 2 }]);
+  });
+
+  it("勾那一個選項就回傳兩個 Trial（v2 只回傳 1 個）", () => {
+    const state = { ...emptyFilter(), applicant: [base] };
+    const got = applyFilters(all, state).map((x) => x.trial.protocolRaw[0]);
+    expect(got.sort()).toEqual(["APPL-WS-01", "APPL-WS-02"]);
+  });
+
+  it("變體 Trial 的卡片顯示值仍是 raw（分組鍵不改寫原文）", () => {
+    const variant = byProtocol("APPL-WS-02");
+    expect(variant.displayFields[field]!.raw).toBe(`${base} \t`);
+    expect(categoryOf(variant, field)).toBe(base);
+  });
+
+  it("每個 Trial 的歸類都落在某個 stats bucket 或特殊值（篩選與統計卡對得上）", () => {
+    const values = new Set(stats.facets.applicant!.buckets.map((b) => b.value));
+    for (const t of trials) {
+      const c = categoryOf(t, field);
+      if (c === UNPROVIDED || c === CONFLICTED) continue;
+      expect(values.has(c), `${t.protocolRaw[0]} 的申請者「${c}」不在 bucket 中`).toBe(true);
+    }
+  });
+});

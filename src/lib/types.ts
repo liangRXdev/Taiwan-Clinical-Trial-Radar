@@ -52,6 +52,12 @@ export interface Trial {
    * 屬於這 9 欄者。四個長文字欄位不在此（F3），詳情頁逐 record 從 shard 取原文。
    */
   displayFields: Record<string, FieldValue>;
+  /**
+   * schemaVersion 3：facet 分組鍵，**只在鍵 ≠ typed 時出現**（目前只有申請者欄位）。
+   * 由 ETL 以 `facet_normalize` 算好，前端不重做正規化——Python 與 JS 的 `\s`
+   * 與 NFKC 版本不保證一致，兩邊各算一次就是兩份契約。
+   */
+  facetKeys?: Record<string, string>;
   searchShortLatest: SearchEntry[];
   shard: string;
 }

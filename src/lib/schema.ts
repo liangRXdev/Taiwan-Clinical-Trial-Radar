@@ -12,7 +12,7 @@
 import type { FieldValue, Trial, TrialsIndex, Typed } from "./types.js";
 
 /** 本前端支援的 schema 版本。artifact 不是這個版本時 fail-closed。 */
-export const SUPPORTED_SCHEMA_VERSION = 2;
+export const SUPPORTED_SCHEMA_VERSION = 3;
 
 /** 序列化在檔案裡的稀疏形狀。`typed`／`flags` 可能不存在。 */
 export interface SparseFieldValue {

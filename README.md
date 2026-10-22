@@ -10,7 +10,7 @@ A search tool for drug clinical trials in Taiwan. It turns the clinical trial re
 |---|---|
 | Current data | Latest `資料更新時間` (data update time) is **2026-08-17** (5,888 trials / 18,736 review records) |
 | Update frequency | Fetched automatically on the 1st of each month; nothing is published if content is unchanged |
-| Specification | [`.ai-review/plan.md`](./.ai-review/plan.md) **v0.9** (the only normative version) |
+| Specification | [`.ai-review/plan.md`](./.ai-review/plan.md) **v0.10** (the only normative version) |
 | To-do / progress | [`TODO.md`](./TODO.md) / [`PROGRESS.md`](./PROGRESS.md) |
 
 > `Taiwan-Clinical-Trial-Radar-spec.md` is the initial draft of 2026-09-12. Many parts of it were overturned by measurement and review; it is **kept as a historical document and has no normative force**.

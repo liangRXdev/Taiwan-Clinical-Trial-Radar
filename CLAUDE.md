@@ -2,13 +2,13 @@
 
 台灣藥品臨床試驗檢索站。Python ETL（build-time）+ TypeScript 靜態前端 + GitHub Actions，部署 **Cloudflare Pages**。只用 TFDA dataset 205。
 
-**現況：M0–M3 完成並上線**（2026-09-22）。站台 <https://taiwan-clinical-trial-radar.pages.dev>（Cloudflare Pages，Direct Upload ＋ Actions），repo public。規格經**五輪**覆審定案 **v0.9**。
+**現況：M0–M3 完成並上線**（2026-09-22）。站台 <https://taiwan-clinical-trial-radar.pages.dev>（Cloudflare Pages，Direct Upload ＋ Actions），repo public。規格經**五輪**覆審定案 **v0.9**，2026-10-22 小修為 **v0.10**（applicant facet 分組鍵，schemaVersion 3）。
 
 已發布 `datasetVersion=ef785e7addff8596`／5,888 Trial／18,736 列。
 **pytest 243／vitest 211／Playwright 69**、fixture 自檢 289 條斷言全綠；CI 七個 gate 全綠。
 下一步是 M4 收尾（README 已更新、已併入 pharmacy-portal、規格符合度稽核進行中）。
 
-**唯一具規範效力的規格是 `.ai-review/plan.md` v0.9，動工時直接依 §14 的 14 項契約表實作，不要重新推導。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2–v0.8 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
+**唯一具規範效力的規格是 `.ai-review/plan.md` v0.10，動工時直接依 §14 的 14 項契約表實作，不要重新推導。** `Taiwan-Clinical-Trial-Radar-spec.md`（v0.1）與 plan.md 的 v0.2–v0.8 都已降為歷史文件，**不得作為實作或驗收依據**——v0.1 有六處條文（§3.1／§5.1／§8／§9／§14／§18）仍在要求已取消的 206–209 關聯與 `verify_linkage.py`。
 
 ---
 
@@ -46,10 +46,11 @@
 
 連帶：**不做方向性 diff**（`20 → 30` 的箭頭）。同日平手時沒有可靠順序，箭頭可能寫反。只標示「哪些欄位存在不同值」。
 
-### 2b. 三套正規化各自獨立，不可混用
+### 2b. 四套正規化各自獨立，不可混用
 
 - **identity**（主鍵用）：`strip → NFKC → upper`。**不做**標點移除、不做內部空白壓縮。實測零碰撞；碰撞即硬失敗 `IDENTITY_COLLISION`，不得合併。
 - **search**（查詢比對用）：`strip → NFKC → casefold → 壓縮內部空白`。
+- **facet**（applicant 篩選分組鍵，v0.10）：`NFKC → 壓縮內部空白 → strip`，**不 casefold**。ETL 算好寫進 `facetKeys`（稀疏），**前端不重做**——Python 與 JS 的 `\s`／NFKC 版本不保證一致。phase／scale 不套（NFKC 會把 `Phase Ⅱ` 折成 `Phase II`）。
 - **conflictText**（衝突比較用）：`NFKC → 移除全部空白`。但**只用於文字欄位**——數值與分類欄位走 §6.4.2 的 semantic comparison key。
 
 **「ASCII 英數字元」必須明定，否則實作會相反。** Python 的 `"系統測試".isalnum()` 回傳 **`True`**（中文被視為字母）。若用 `isalnum()` 實作 `protocolNonIdentifier`，`系統測試` **不會**被標記——與意圖完全相反。一律先 NFKC 再套 `[A-Za-z0-9]`。
@@ -189,7 +190,7 @@ commit 一起上線。所以風險不是「兩者時間差」，而是**同一�
 
 ## 文件慣例
 
-- `.ai-review/plan.md` — **唯一 normative 規格**（v0.9）。驗收條件有可引用編號 A1–H5，**14 項動工前契約見 §14**，`/codex-review` 的規格符合度稽核以它為基準。
+- `.ai-review/plan.md` — **唯一 normative 規格**（v0.10）。驗收條件有可引用編號 A1–H5，**14 項動工前契約見 §14**，`/codex-review` 的規格符合度稽核以它為基準。
 - `.ai-review/fixture-findings-a.md` — A 群 fixture 反驗規格的結果（7 個洞，全部結案）。
 - `.ai-review/fixture-findings-m05.md` — M0.5 的結果（GAP-8／9／10，**全部 open**）。
 - `.ai-review/plan-review-*.md` — Codex 原始輸出，原封不動落檔。

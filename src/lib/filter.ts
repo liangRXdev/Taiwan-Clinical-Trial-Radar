@@ -81,7 +81,8 @@ export function categoryOf(trial: Trial, field: string): string {
   if (trial.conflictFields.includes(field)) return CONFLICTED;
   const value = trial.displayFields[field];
   if (value === undefined || value.typed === null || value.typed === "") return UNPROVIDED;
-  return String(value.typed);
+  // 申請者以 ETL 算好的分組鍵比對 stats bucket；只差空白的寫法因此落在同一個選項
+  return trial.facetKeys?.[field] ?? String(value.typed);
 }
 
 /**

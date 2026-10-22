@@ -1,5 +1,15 @@
 # PROGRESS
 
+## 2026-10-22 applicant facet 分組鍵（規格 v0.10，schemaVersion 3）
+
+- 成因：applicant 以 raw typed 分 bucket。實資料 370 bucket 中 7 組只差尾隨空白／`	`／`
+`／CJK 相容字 U+F9B3，124 個 Trial 落在旁支；最大一組勾主選項只回 162/278（漏 42%），統計卡照算。
+- 修法：`facet_normalize`（NFKC → 壓空白 → strip，不 casefold），只套 applicant；index 帶稀疏 `facetKeys`，前端 `categoryOf` 讀它、不自行正規化；I6 由 typed 獨立重算鍵並與 `facetKeys` 對帳。
+- 預期實資料：370 → 360 bucket。
+- 驗證：pytest 300 passed（另 2 條 schema 對齊依「資料先行」預期紅，待月更新重建）、vitest 251、ruff、build 通過；categoryOf／stats 分組／I6 對帳三處各做變異，皆被殺。
+- **上線流程**：merge 後 CI 紅在 schema 對齊 → 手動 dispatch `月更新資料` → 資料 commit 落地後部署自動跟上。
+- 未做：舊分享連結帶旁支 raw 值時不對應 bucket（併入 review #3）；`/codex-checkplan` 審 v0.10 修訂本身。
+
 ## 2026-10-22 四項測試 oracle 補強
 
 - 已 fetch 確認遠端 main 為 `1d707ee`（合併 `8697c97` fork PR 部署防護）；本輪未修改該防護或 workflow。

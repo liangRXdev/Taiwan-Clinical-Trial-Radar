@@ -22,6 +22,7 @@ from trial_radar.artifacts import (
     build_artifacts,
     canonical_json_bytes,
     dataset_version,
+    field_typed,
     manifest_paths,
 )
 from trial_radar.errors import ErrorCode, PipelineError
@@ -203,6 +204,25 @@ def _facet_mutator(name):
     return m
 
 
+APPLICANT = "臨床試驗申請者"
+
+
+def _first_with_applicant(logical):
+    return next(t for t in _index(logical)
+                if APPLICANT in t["displayFields"] and APPLICANT not in t["conflictFields"])
+
+
+def _m_facetkey_wrong(logical):
+    """index 的 facetKeys 與 typed 重算值不符：前端會把這個 Trial 歸到別的選項。"""
+    _first_with_applicant(logical)["facetKeys"] = {APPLICANT: "不存在的申請者"}
+
+
+def _m_facetkey_redundant(logical):
+    """鍵 == typed 卻仍帶 facetKeys：違反稀疏約定（§6.4.4），也是兩份資訊漂移的起點。"""
+    t = _first_with_applicant(logical)
+    t["facetKeys"] = {APPLICANT: field_typed(t["displayFields"][APPLICANT])}
+
+
 B6_CASES = [
     ("record 被兩個 Trial 引用（同 shard，可隔離）", _m_dup_owner, {"I3.owner"}),
     ("同一 Trial 重複引用同一筆 record", _m_dup_within_trial, {"I3.owner"}),
@@ -217,6 +237,8 @@ B6_CASES = [
     ("facet phase 的 bucket 計數錯置", _facet_mutator("phase"), {"I6"}),
     ("facet scale 的 bucket 計數錯置", _facet_mutator("scale"), {"I6"}),
     ("facet applicant 的 bucket 計數錯置", _facet_mutator("applicant"), {"I6"}),
+    ("facetKeys 與重算的分組鍵不符", _m_facetkey_wrong, {"I6"}),
+    ("facetKeys 在鍵 == typed 時仍輸出", _m_facetkey_redundant, {"I6"}),
 ]
 
 

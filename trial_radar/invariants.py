@@ -22,6 +22,7 @@ from .artifacts import (
     artifact_digest,
     brotli_size,
     dataset_version,
+    facet_key,
     field_typed,
     manifest_paths,
 )
@@ -41,7 +42,7 @@ INVARIANTS: dict[str, str] = {
     "I5.trials": "trials 依 trialId 昇序",
     "I5.records": "recordIds 依（可採計日期降序、不可採計者置末、recordId 昇序）",
     "I5.cohort": "latestCohort 依 recordId 昇序",
-    "I6": "stats 的 facet bucket 計數 == 依 trials-index 重算的結果",
+    "I6": "stats 的 facet bucket 計數 == 依 trials-index 重算的結果；facetKeys == 依 typed 重算的鍵",
     "I7.datasetVersion": "datasetVersion 可由 logical payload 重算",
     "I7.artifactDigest": "artifactDigest 可由 manifest.files 的最終位元組重算",
     "I8.bytes": "每個 files 條目的 bytes == 該檔實際位元組長度",
@@ -201,15 +202,26 @@ def check_invariants(on_disk: dict[str, bytes], manifest: dict) -> InvariantRepo
             buckets: dict[str, int] = {}
             unprovided = conflicted = 0
             for t in trials:
+                declared = t.get("facetKeys", {})
                 if field in t["conflictFields"]:
                     conflicted += 1
+                    if field in declared:
+                        rep.violated.add("I6")  # 不一致者不屬任何 bucket，不得帶鍵
                     continue
                 value = t["displayFields"].get(field)
                 typed = None if value is None else field_typed(value)
                 if typed is None:
                     unprovided += 1
-                else:
-                    buckets[typed] = buckets.get(typed, 0) + 1
+                    if field in declared:
+                        rep.violated.add("I6")
+                    continue
+                # 鍵由 typed **獨立重算**，不讀 index 的 `facetKeys`——讀它等於讓 index 自證。
+                # `facetKeys` 本身再與重算值對帳：前端分組靠它，錯了篩選與統計卡就對不上。
+                key = facet_key(field, typed)
+                buckets[key] = buckets.get(key, 0) + 1
+                # 稀疏：鍵 == typed 時不得帶（多帶一份也是漂移，只是暫時無害）
+                if declared.get(field, typed) != key or (field in declared and key == typed):
+                    rep.violated.add("I6")
             declared_counts = {b["value"]: b["count"] for b in facet["buckets"]}
             if (
                 declared_counts != buckets
