@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from dataclasses import field as _dc_field
 
 from .artifacts import (
+    FACET_KEYED_FIELDS,
     FACETS,
     TOP_LEVEL_FILE_KEYS,
     artifact_digest,
@@ -194,6 +195,11 @@ def check_invariants(on_disk: dict[str, bytes], manifest: dict) -> InvariantRepo
         rep.unevaluable["I6"] = "stats.json 不可讀"
     else:
         stats = parsed[stats_path]
+        # facetKeys 的形狀：鍵集合封閉、不得為空物件（§6.4.4，r6 R6-3）
+        for t in trials:
+            declared = t.get("facetKeys")
+            if declared is not None and (not declared or not set(declared) <= FACET_KEYED_FIELDS):
+                rep.violated.add("I6")
         for name, field in FACETS.items():
             facet = stats["facets"].get(name)
             if facet is None:
@@ -218,7 +224,10 @@ def check_invariants(on_disk: dict[str, bytes], manifest: dict) -> InvariantRepo
                 # 鍵由 typed **獨立重算**，不讀 index 的 `facetKeys`——讀它等於讓 index 自證。
                 # `facetKeys` 本身再與重算值對帳：前端分組靠它，錯了篩選與統計卡就對不上。
                 key = facet_key(field, typed)
-                buckets[key] = buckets.get(key, 0) + 1
+                if key == "":
+                    unprovided += 1
+                else:
+                    buckets[key] = buckets.get(key, 0) + 1
                 # 稀疏：鍵 == typed 時不得帶（多帶一份也是漂移，只是暫時無害）
                 if declared.get(field, typed) != key or (field in declared and key == typed):
                     rep.violated.add("I6")

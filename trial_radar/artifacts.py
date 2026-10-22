@@ -53,7 +53,11 @@ def facet_key(field: str, typed) -> str:
 
 
 def facet_keys_json(t: Trial) -> dict[str, str]:
-    """稀疏 `facetKeys`：只在鍵 ≠ typed 時輸出（實測 ~124／5,888 個 Trial）。"""
+    """稀疏 `facetKeys`：只在鍵 ≠ typed 時輸出（實測 130／5,928 個 Trial）。
+
+    鍵為 `""`（typed 非空但只有空白）也照輸出：前端據此歸「未提供」。不輸出的話，
+    前端只看得到 typed `" \t"`，會把它當成一個不存在於 stats 的選項值（r6 R6-2）。
+    """
     out = {}
     for field in sorted(FACET_KEYED_FIELDS):
         if field in t.conflict_fields:
@@ -215,8 +219,11 @@ def _stats(trials: list[Trial], record_count: int) -> dict:
             value = t.display_fields.get(field)
             if value is None or value.typed is None:
                 unprovided += 1
+                continue
+            key = facet_key(field, value.typed)
+            if key == "":
+                unprovided += 1  # 只有空白：§9.3.5 歸未提供，不得成為 "" bucket
             else:
-                key = facet_key(field, value.typed)
                 buckets[key] = buckets.get(key, 0) + 1
         facets[name] = {
             "denominatorKind": "trials",

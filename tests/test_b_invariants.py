@@ -26,6 +26,7 @@ from trial_radar.artifacts import (
     manifest_paths,
 )
 from trial_radar.errors import ErrorCode, PipelineError
+from trial_radar.fields import PRESENTATION_FIELDS
 from trial_radar.invariants import INVARIANTS, SPEC_INVARIANTS, assert_invariants, check_invariants
 from trial_radar.model import build_trials
 
@@ -223,6 +224,66 @@ def _m_facetkey_redundant(logical):
     t["facetKeys"] = {APPLICANT: field_typed(t["displayFields"][APPLICANT])}
 
 
+def _m_facetkey_missing(logical):
+    """typed 帶尾隨空白（鍵 ≠ typed）卻沒有 facetKeys：前端會拿 typed 比對而漏掉這個 Trial。
+
+    stats 不需要動——尾隨空白不改變分組鍵——所以只有 facetKeys 的必要性檢查抓得到。
+    """
+    t = _first_with_applicant(logical)
+    v = t["displayFields"][APPLICANT]
+    v["raw"] = field_typed(v) + " "
+    v.pop("typed", None)
+    t.pop("facetKeys", None)
+
+
+def _m_facetkey_on_unprovided(logical):
+    t = next(t for t in _index(logical)
+             if APPLICANT not in t["conflictFields"]
+             and (APPLICANT not in t["displayFields"]
+                  or field_typed(t["displayFields"][APPLICANT]) is None))
+    t["facetKeys"] = {APPLICANT: "某申請者"}
+
+
+def _m_facetkey_on_conflicted(logical):
+    """把一個 Trial 改成 applicant 衝突、**stats 同步改成自洽**，再讓它帶鍵。
+
+    stats 一併調整是為了讓計數檢查保持通過——否則測到的是計數，不是「衝突者不得帶鍵」。
+    """
+    t = _first_with_applicant(logical)
+    key = field_typed(t["displayFields"].pop(APPLICANT))
+    t["conflictFields"] = [f for f in PRESENTATION_FIELDS if f in {*t["conflictFields"], APPLICANT}]
+    facet = logical["stats.json"]["facets"]["applicant"]
+    bucket = next(b for b in facet["buckets"] if b["value"] == key)
+    bucket["count"] -= 1
+    facet["buckets"] = [b for b in facet["buckets"] if b["count"] > 0]
+    facet["conflicted"] += 1
+    t["facetKeys"] = {APPLICANT: key}
+
+
+def _m_facetkey_extra_field(logical):
+    # 用非 facet 欄位：若用期別，phase 那一輪的對帳會順帶抓到，測不出封閉集合本身
+    _first_with_applicant(logical)["facetKeys"] = {"適應症中文": "某適應症"}
+
+
+def _m_facetkey_empty_object(logical):
+    _first_with_applicant(logical)["facetKeys"] = {}
+
+
+def _m_facetkey_and_stats_comutated(logical):
+    """stats 與 facetKeys **同步**改成同一個錯誤分組、typed 不變。
+
+    讀 facetKeys 重算 stats 的驗證器會看到兩者自洽而放行——這條專殺那種自證（r6 R6-8）。
+    """
+    t = _first_with_applicant(logical)
+    key = field_typed(t["displayFields"][APPLICANT])
+    facet = logical["stats.json"]["facets"]["applicant"]
+    next(b for b in facet["buckets"] if b["value"] == key)["count"] -= 1
+    facet["buckets"] = [b for b in facet["buckets"] if b["count"] > 0]
+    facet["buckets"].append({"value": "錯誤分組", "count": 1})
+    facet["buckets"].sort(key=lambda b: b["value"])
+    t["facetKeys"] = {APPLICANT: "錯誤分組"}
+
+
 B6_CASES = [
     ("record 被兩個 Trial 引用（同 shard，可隔離）", _m_dup_owner, {"I3.owner"}),
     ("同一 Trial 重複引用同一筆 record", _m_dup_within_trial, {"I3.owner"}),
@@ -239,6 +300,12 @@ B6_CASES = [
     ("facet applicant 的 bucket 計數錯置", _facet_mutator("applicant"), {"I6"}),
     ("facetKeys 與重算的分組鍵不符", _m_facetkey_wrong, {"I6"}),
     ("facetKeys 在鍵 == typed 時仍輸出", _m_facetkey_redundant, {"I6"}),
+    ("鍵 ≠ typed 卻缺 facetKeys", _m_facetkey_missing, {"I6"}),
+    ("未提供者帶 facetKeys", _m_facetkey_on_unprovided, {"I6"}),
+    ("衝突者帶 facetKeys（stats 自洽）", _m_facetkey_on_conflicted, {"I6"}),
+    ("facetKeys 含封閉集合外的鍵", _m_facetkey_extra_field, {"I6"}),
+    ("facetKeys 為空物件", _m_facetkey_empty_object, {"I6"}),
+    ("stats 與 facetKeys 同步錯置、typed 不變", _m_facetkey_and_stats_comutated, {"I6"}),
 ]
 
 

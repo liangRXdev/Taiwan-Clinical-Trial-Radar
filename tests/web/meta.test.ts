@@ -23,8 +23,8 @@ import { manifest, shard, stats, trials } from "./fixture.js";
 const EXPECTED: Record<string, string> = {
   sourceUpdatedAt: "2026/09/18",
   builtAt: "2026/09/18 09:02（台北時間）",
-  trialCount: "57 個試驗",
-  recordCount: "95 筆",
+  trialCount: "60 個試驗",
+  recordCount: "98 筆",
 };
 
 function fields(node: HTMLElement): Record<string, { label: string; value: string }> {

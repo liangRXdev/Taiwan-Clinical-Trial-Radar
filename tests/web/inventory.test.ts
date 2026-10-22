@@ -26,7 +26,7 @@ import { facetOptions, renderFilters } from "../../src/ui/filters.js";
 import { renderMeta } from "../../src/ui/meta.js";
 import { renderStats } from "../../src/ui/stats.js";
 import { DISCLAIMER, FIELD_NOTE, FILTER_SPECIAL, LABEL, META, SCOPE, STATS } from "../../src/ui/text.js";
-import { manifest, shard, stats, trials } from "./fixture.js";
+import { byProtocol, manifest, shard, stats, trials } from "./fixture.js";
 
 const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "src");
 
@@ -272,6 +272,27 @@ describe("E1：狀態概念封閉清單", () => {
 });
 
 // ─────────────────────────────────────────────────────────────── E4
+
+describe("D9／E4：NFKC 才形成的標記字元與原文呈現（r6 R6-11）", () => {
+  it("U+FE64／U+FE65 經 NFKC 成 < > 後，篩選選項仍以文字呈現", () => {
+    const label = "<b>測試戊藥廠";
+    expect(stats.facets.applicant!.buckets.map((b) => b.value)).toContain(label);
+    const panel = renderFilters({
+      stats,
+      state: { phase: [], scale: [], applicant: [], enroll: [], period: null, updated: null },
+      errors: new Map(),
+      callbacks: { onToggle: () => {}, onRange: () => {} },
+    });
+    expect(panel.querySelector("b")).toBeNull();
+    expect(panel.textContent).toContain(label);
+  });
+
+  it("同一變體 Trial：選項用分組鍵，卡片顯示 raw", () => {
+    const card = renderCard({ trial: byProtocol("APPL-WS-02"), hits: [] }, { detailHref: (id) => `?trial=${id}` });
+    expect(card.textContent).toContain("測試丙藥廠股份有限公司 	");
+  });
+});
+
 
 const XSS = '<img src=x onerror="alert(1)">';
 const XSS_2 = "\"><script>alert(2)</script>";

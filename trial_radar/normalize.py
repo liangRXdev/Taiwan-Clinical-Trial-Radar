@@ -47,21 +47,36 @@ def search_normalize(s: str | None) -> str:
     return _WHITESPACE.sub(" ", nfkc((s or "").strip()).casefold())
 
 
+#: §6.0 `strip` 的封閉字元集合：Unicode `White_Space=Yes` 的全部碼點。
+#: **刻意不用 `\s`**：Python 的 `\s` 另含 U+001C–U+001F（非 White_Space），
+#: 零寬字元（U+200B／U+FEFF／U+200C／U+200D）兩者都不含。facetNormalize 的壓縮與
+#: strip 都以這組為準（r6 R6-1），其餘正規化維持既有實作，不在本次範圍。
+_WHITE_SPACE = (
+    "\u0009-\u000d \u0085   - "
+    "    　"
+)
+_FACET_WS_RUN = re.compile(f"[{_WHITE_SPACE}]+")
+
+
 def facet_normalize(s: str | None) -> str:
-    """`nfkc(s)` → 內部連續空白壓為單一空格 → `strip`（§6.0）。**只用於 applicant facet 的分組鍵**。
+    """`nfkc(s)` → 內部連續空白壓為單一 U+0020 → 去前後空白（§6.0）。**只用於 applicant facet 的分組鍵**。
+
+    空白一律指 `White_Space=Yes`（見 `_WHITE_SPACE`）；零寬字元不是空白，不被壓縮也不被移除。
 
     與 `search_normalize` 差在**不做 casefold**：facet 鍵會原樣顯示為篩選選項與統計卡
     標籤，而實測（2026-10-22，370 bucket）casefold 不多合併任何一組。
 
-    為什麼需要：applicant 原本以 raw typed 分 bucket，只差尾隨空白／`	`／`
-`／
+    為什麼需要：applicant 原本以 raw typed 分 bucket，只差尾隨空白／`\\t`／`\\r\\n`／
     CJK 相容字（U+F9B3）的同一申請者被拆成多個 bucket——實測 7 組、124 個 Trial
     落在旁支，最大一組勾主選項會漏掉 116/278（42%）。
 
     `nfkc` 放在 strip **之前**：NFKC 會把某些非空白字元展開出空白（如 U+00A8 `¨` →
     U+0020 U+0308），先 strip 再 NFKC 可能留下前後空白。
+
+    回傳空字串代表「正規化後無內容」（如 typed 為 `" \\t"`），呼叫端須歸「未提供」，
+    不得成為 bucket（§9.3.5）。
     """
-    return _WHITESPACE.sub(" ", nfkc(s)).strip()
+    return _FACET_WS_RUN.sub(" ", nfkc(s)).strip(" ")
 
 
 def has_ascii_alnum(s: str | None) -> bool:
