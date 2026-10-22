@@ -35,9 +35,17 @@ concurrency:
 jobs:
   deploy:
     # workflow_dispatch 沒有 `workflow_run` 這個 context，要單獨放行
+    #
+    # **只看 conclusion 不夠（pwn-request）。** `branches: [main]` 篩的是 *head_branch*：
+    # fork 從**它自己的** main 開 PR → CI 綠 → 這裡 checkout fork 的 head_sha、跑 fork 的
+    # `npm ci`／build，再帶 `CLOUDFLARE_API_TOKEN` 執行 wrangler。因此另外要求：
+    # - 上游 run 的 commit 來自**本 repo**（擋 fork）
+    # - 上游 run 的觸發事件在白名單內（擋 pull_request；CI 走 push，月更新走 schedule／dispatch）
     if: >-
       github.event_name == 'workflow_dispatch'
-      || github.event.workflow_run.conclusion == 'success'
+      || (github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.head_repository.full_name == github.repository
+          && contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event.workflow_run.event))
     runs-on: ubuntu-24.04
     permissions:
       contents: read
