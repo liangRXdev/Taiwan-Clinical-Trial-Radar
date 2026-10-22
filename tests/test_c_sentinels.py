@@ -181,26 +181,26 @@ def test_c5_every_combination_row_has_a_case():
     huge = str(MAX_SAFE_INT + 1)
 
     rows = [
-        (1, T, parse_text("abc")),
-        (2, F, parse_numeric("42")),
-        (3, F, parse_numeric("0")),
-        (4, F, parse_numeric("20-40")),
-        (5, F, parse_numeric("")),
-        (6, F, parse_numeric("約400")),
-        (7, F, parse_numeric("-5")),
-        (8, F, parse_numeric("40-20")),
-        (9, F, parse_numeric(huge)),
-        (10, F, parse_numeric(f"1-{huge}")),
-        (11, P, parse_categorical(P, "0")),
-        (12, P, parse_categorical(P, "第三期")),
-        (13, P, parse_categorical(P, "Phase Ⅲ")),
-        (14, D, FieldValue("2025/01/01", "2025-01-01", ())),
-        (15, D, FieldValue("", None, ("periodStartMissing",))),
+        (1, T, parse_text("abc"), ("text", "abc")),
+        (2, F, parse_numeric("42"), ("int", 42)),
+        (3, F, parse_numeric("0"), ("int", 0)),
+        (4, F, parse_numeric("20-40"), ("range", 20, 40)),
+        (5, F, parse_numeric(""), ("numericMissing",)),
+        (6, F, parse_numeric("約400"), ("numericUnparsed", "約400")),
+        (7, F, parse_numeric("-5"), ("numericImplausible", "-5")),
+        (8, F, parse_numeric("40-20"), ("numericRangeInvalid", "40-20")),
+        (9, F, parse_numeric(huge), ("numericOutOfRange", huge)),
+        (10, F, parse_numeric(f"1-{huge}"), ("numericOutOfRange", f"1-{huge}")),
+        (11, P, parse_categorical(P, "0"), ("unprovided",)),
+        (12, P, parse_categorical(P, "第三期"), ("categoricalUnknown", "第三期")),
+        (13, P, parse_categorical(P, "Phase Ⅲ"), ("cat", "Phase Ⅲ")),
+        (14, D, FieldValue("2025/01/01", "2025-01-01", ()), ("date", "2025-01-01")),
+        (15, D, FieldValue("", None, ("periodStartMissing",)), ("periodStartMissing", "")),
     ]
     assert len(rows) == 15
-    for num, field, value in rows:
+    for num, field, value, expected in rows:
         key = comparison_key(field, value)
-        assert isinstance(key, tuple) and key, f"第 {num} 列取不到比較鍵"
+        assert key == expected, f"第 {num} 列比較鍵不符：{key!r} != {expected!r}"
 
 
 @pytest.mark.parametrize(
@@ -375,3 +375,21 @@ def test_c6_short_field_raw_variants_still_present(a_core_rows, build_date):
         if "rawVariants" in v.get("flags", [])
     ]
     assert found, "卡片欄位的 rawVariants 不得一併消失"
+
+
+@pytest.mark.parametrize("row_number", range(1, 16))
+def test_c5_each_wrong_nonempty_key_is_rejected(monkeypatch, row_number):
+    """每一列回傳非空但錯誤的鍵時，精確 oracle 必須失敗。"""
+    import sys
+
+    original = comparison_key
+    calls = 0
+
+    def mutated(field, value):
+        nonlocal calls
+        calls += 1
+        return ("wrong-but-nonempty",) if calls == row_number else original(field, value)
+
+    monkeypatch.setattr(sys.modules[__name__], "comparison_key", mutated)
+    with pytest.raises(AssertionError, match=f"第 {row_number} 列比較鍵不符"):
+        test_c5_every_combination_row_has_a_case()

@@ -9,7 +9,7 @@
 - **F1 合格**：對真實部署實測 **1,284,017** bytes／門檻 1,500,000（餘裕 14.4%），已接進 `deploy.yml` 成為真正的 gate
 
 **M4 亦已完成**（README／pharmacy-portal／規格符合度稽核 ＋ 五項必修）。
-剩下的都是不阻擋上線的後續：Medium／Low 四項、43 條未覆核的稽核判定、以及 `trials-index` 減肥（F1 餘裕僅 3.2%）。
+2026-10-22 已補強四項 Medium／Low；`trials-index` 減肥也已完成。43 條舊稽核判定仍保留待逐行覆核，不能由全綠測試推定完成。
 
 四項全部完成：A 群補 v0.5 案例（73 列／45 Trial）、最小 artifact 樣本（B8）、B 群失敗注入 fixture、§9.3.6 不變量反例（B6）與 C4 的三個 mutation。`tests/fixtures/run_all.py` **244 條斷言全綠**（v0.6 收斂後）。
 
@@ -211,8 +211,7 @@ A 群 fixture **已建立並補齊 v0.5 案例**（`tests/fixtures/a_core/` 73 �
 
 ### 待辦（不阻擋上線）
 
-- Medium／Low 四項：E7 候選值只掃原形、C5 十五列只驗非空 tuple、
-  E2 的 selector oracle、A1 的 `<=`
+- [x] 2026-10-22：Medium／Low 四項已補強，詳見 `.ai-review/followup-20261022.md`：E7 候選正規化與截斷、C5 十五列精確鍵值、E2 文字計數 inventory、A1 完整 fingerprint multiset。
 - Codex 54 條判定中**還有 43 條未逐行覆核**，多為「弱化」，建議分批處理
 - [x] ~~`trials-index` 減肥~~ **已完成**（schemaVersion 2 稀疏 `displayFields`）：
   F1 1,452,124 → **1,284,017**，餘裕 3.2% → **14.4%**

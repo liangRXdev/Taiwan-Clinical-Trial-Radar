@@ -1,5 +1,17 @@
 # PROGRESS
 
+## 2026-10-22 四項測試 oracle 補強
+
+- 已 fetch 確認遠端 main 為 `1d707ee`（合併 `8697c97` fork PR 部署防護）；本輪未修改該防護或 workflow。
+- A1：完整 identity 群組的 fingerprint Counter 精確相等，包含重複列；四類空白變體各有注入額外重複列的反例。
+- C5：15 列皆寫死 expected semantic key；逐列注入非空錯鍵，15 種變異皆由指定 oracle 拒絕。
+- E2：獨立由文字分組計數辨識 facet surface，與封閉名單及完整計數 multiset 對帳；無 data-*／class、一般 section／badge、既有卡片內額外計數均有反例。
+- E7：候選含 NFKC、查詢樣式與去空白形式，長值含從八字元起的全部前綴；掃描根節點及子節點 attribute，加入 text／aria-label／data-state 洩漏反例。
+- 驗證：最終完整 pytest 289/289（本次專用 basetemp），Vitest 全套 247/247；含 19 個新增 Python 變異反例及 8 個新增 DOM 反例。typecheck、build、Ruff 通過。
+- 第一次完整 pytest 因預設 Windows 暫存目錄 ACL 產生 31 個 setup error；改用可寫的專用 basetemp 後完整通過。未據此修改產品或測試邏輯。
+- 本輪未完成其餘舊稽核判定的逐行覆核、未執行 Playwright／正式站驗收，未 commit、push 或部署。
+
+
 | 里程碑 | 狀態 |
 |---|---|
 | M0 規格修訂與覆審 | **完成**（三輪覆審 ＋ A 群 fixture 反驗，十項契約封存） |

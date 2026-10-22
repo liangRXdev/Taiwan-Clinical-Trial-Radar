@@ -250,6 +250,8 @@ A1_MERGE_CLASSES = [
 @pytest.mark.parametrize("label,make", A1_MERGE_CLASSES, ids=[c[0] for c in A1_MERGE_CLASSES])
 def test_a1_merge_classes(a_core_rows, build_date, label, make):
     """A1：四類「應合併」案例各自寫死 membership、`protocolRaw[]` 與 warning oracle。"""
+    from collections import Counter
+
     from trial_radar.identity import canonical_serialization, sha256hex, trial_id
 
     rows = [dict(r) for r in a_core_rows.values()]
@@ -275,9 +277,10 @@ def test_a1_merge_classes(a_core_rows, build_date, label, make):
     assert t.protocol_raw == sorted(set(t.protocol_raw))
 
     # (2) fingerprint → trialId 的 group membership，逐列寫死而非只比總數
-    expected_fps = {sha256hex(canonical_serialization(r)) for r in [donor] + added}
-    actual_fps = {sha256hex(canonical_serialization(r.raw)) for r in t.records}
-    assert expected_fps <= actual_fps, f"{label}：每一列都要落進同一個 Trial"
+    expected_rows = [r for r in rows if identity_normalize(r[PROTOCOL]) == identity_normalize(base)]
+    expected_fps = Counter(sha256hex(canonical_serialization(r)) for r in expected_rows)
+    actual_fps = Counter(sha256hex(canonical_serialization(r.raw)) for r in t.records)
+    assert expected_fps == actual_fps, f"{label}：每一列都要落進同一個 Trial"
 
     # (3) warning oracle：一則，含全部變體
     groups = whitespace_only_variants(rows)
@@ -299,3 +302,22 @@ def test_a1_merge_classes_are_distinguishable(a_core_rows):
     for _, make in A1_MERGE_CLASSES:
         for p in make(base):
             assert p != base and p.strip() == base
+
+
+@pytest.mark.parametrize("label,make", A1_MERGE_CLASSES, ids=[c[0] for c in A1_MERGE_CLASSES])
+def test_a1_extra_duplicate_record_is_rejected(a_core_rows, build_date, monkeypatch, label, make):
+    """集合相等仍可能漏掉重複列；完整 multiset 必須抓到。"""
+    import sys
+
+    original = build_trials
+    base = _donor(a_core_rows)[PROTOCOL]
+
+    def mutated(rows, date):
+        result = original(rows, date)
+        target = next(t for t in result if base in t.protocol_raw)
+        target.records.append(target.records[0])
+        return result
+
+    monkeypatch.setattr(sys.modules[__name__], "build_trials", mutated)
+    with pytest.raises(AssertionError, match="每一列都要落進同一個 Trial"):
+        test_a1_merge_classes(a_core_rows, build_date, label, make)
