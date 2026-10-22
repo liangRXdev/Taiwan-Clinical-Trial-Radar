@@ -20,7 +20,7 @@ from .fields import (
 )
 from .identity import sha256hex
 from .model import Trial
-from .normalize import search_normalize
+from .normalize import facet_normalize, search_normalize
 
 #: §9.3.1 的 schema 版本。
 #:
@@ -28,7 +28,11 @@ from .normalize import search_normalize
 #: 依 §9.3 的規則，移除欄位一律 bump——而首次 promotion 已於 2026-09-22 完成，
 #: 「尚無可被外部讀取的 v1 artifact」那條豁免已經失效。
 #: 舊版前端讀到 v2 會把缺席的 `typed` 當成 `undefined`，那正是 bump 要擋的事。
-SCHEMA_VERSION = 2
+#:
+#: **3 起 applicant facet 以 `facet_normalize(typed)` 分 bucket**，Trial 新增稀疏的
+#: `facetKeys`（鍵 ≠ typed 時才出現）。bucket 值的語意變了：v2 前端以 typed 比對
+#: v3 的 bucket，旁支 Trial 會從篩選結果消失而統計卡照算——數字與結果對不上。
+SCHEMA_VERSION = 3
 SOURCE_DATASET_ID = 205
 
 # §9.3.5：facet 名單為封閉集合，恰為三個。E2 以本清單為 facet widget 的唯一 oracle 來源。
@@ -37,6 +41,30 @@ FACETS: dict[str, str] = {
     "scale": "本臨床試驗規模",
     "applicant": "臨床試驗申請者",
 }
+
+#: 以 `facet_normalize` 分 bucket 的 facet 欄位。**phase／scale 不在內**：它們的 typed 是
+#: §6.6.1 的合法值常數，NFKC 會把 `Phase Ⅱ` 折成 `Phase II`，改掉合法值本身。
+FACET_KEYED_FIELDS: frozenset[str] = frozenset({"臨床試驗申請者"})
+
+
+def facet_key(field: str, typed) -> str:
+    """facet bucket 的分組鍵（§9.3.5）。typed 為 None 者不進 bucket，呼叫端先判。"""
+    return facet_normalize(typed) if field in FACET_KEYED_FIELDS else typed
+
+
+def facet_keys_json(t: Trial) -> dict[str, str]:
+    """稀疏 `facetKeys`：只在鍵 ≠ typed 時輸出（實測 ~124／5,888 個 Trial）。"""
+    out = {}
+    for field in sorted(FACET_KEYED_FIELDS):
+        if field in t.conflict_fields:
+            continue
+        value = t.display_fields.get(field)
+        if value is None or value.typed is None:
+            continue
+        key = facet_key(field, value.typed)
+        if key != value.typed:
+            out[field] = key
+    return out
 
 
 #: §9.3.5：brotli 品質。**必須與 Cloudflare Pages 實際使用的設定一致**，否則 §8.5 顯示的
@@ -132,7 +160,7 @@ def field_flags(value: dict) -> list[str]:
 
 def _trial_json(t: Trial) -> dict:
     """§6.4.4 的 Trial（方案 B：`recordIds`／`latestCohort` **不**在 index 內）。"""
-    return {
+    out = {
         "id": t.id,
         "protocolRaw": t.protocol_raw,
         "protocolNonIdentifier": t.protocol_non_identifier,
@@ -167,6 +195,11 @@ def _trial_json(t: Trial) -> dict:
         ],
         "shard": t.shard,
     }
+    # schemaVersion 3：鍵 ≠ typed 時才帶，全無則整個省略（§6.4.4）
+    keys = facet_keys_json(t)
+    if keys:
+        out["facetKeys"] = keys
+    return out
 
 
 def _stats(trials: list[Trial], record_count: int) -> dict:
@@ -183,7 +216,8 @@ def _stats(trials: list[Trial], record_count: int) -> dict:
             if value is None or value.typed is None:
                 unprovided += 1
             else:
-                buckets[value.typed] = buckets.get(value.typed, 0) + 1
+                key = facet_key(field, value.typed)
+                buckets[key] = buckets.get(key, 0) + 1
         facets[name] = {
             "denominatorKind": "trials",
             "buckets": [{"value": v, "count": c} for v, c in sorted(buckets.items())],

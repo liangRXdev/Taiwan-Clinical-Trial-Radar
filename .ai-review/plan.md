@@ -1,4 +1,6 @@
-# Taiwan Clinical Trial Radar — 規格 v0.9（consolidated）
+# Taiwan Clinical Trial Radar — 規格 v0.10（consolidated）
+
+> **v0.10（2026-10-22）只改一件事：applicant facet 的分組鍵**（§6.0 `facetNormalize`、§6.4.4 `facetKeys`、§7.4、§8.4、§9.3.5、I6；schemaVersion 3）。其餘條文與 v0.9 相同，下方以 v0.9 指稱的段落仍有效。見 §15。
 
 > **這是唯一具規範效力的規格。** `Taiwan-Clinical-Trial-Radar-spec.md` v0.1 與本檔 v0.2–v0.4 均降為歷史文件，**不再具 normative 效力**。
 > 依據：2026-09-18 dataset 205 實測 ＋ Codex **四輪**覆審（`plan-review-r1`～`r4.md`、`plan-verdict-r1`～`r4.md`）＋ fixture 反驗（`fixture-findings-a.md`、`fixture-findings-m05.md`）。
@@ -83,6 +85,7 @@
 | `looseKey(s)` | `nfkc(s)` 後移除**所有非 ASCII 英數字元**，再轉大寫。**僅用於偵測近似 protocol，絕不用於收斂** |
 | `conflictText(s)` | `nfkc(s)` 後移除**全部空白**（含全形空白）。用於 §6.4 文字欄位的比較鍵 |
 | `searchNormalize(s)` | `nfkc(strip(s))` → casefold → 內部連續空白壓為單一空格。見 §8.1 |
+| `facetNormalize(s)` | `nfkc(s)` → 內部連續空白壓為單一空格 → `strip`。**不做 casefold**（鍵原樣當篩選選項標籤顯示；實測不多合併任何一組）。**只用於 applicant facet 的分組鍵**（§9.3.5），不用於收斂、搜尋或衝突判定（v0.10） |
 
 **`strip` 必須封存字元集合（v0.9）**：v0.8 把 `strip(raw)` 升格為「合併或硬失敗」的邊界，而在那之前它只是正規化的一個步驟，定義模糊無害。現在它決定 Trial membership、`trialId` 與 URL——不同 runtime 對 NBSP 與零寬字元的處理若有差異，同一份快照會產出不同的 Trial 集合。**零寬字元刻意排除在 strip 之外**：它們不可見，把不可見差異靜默合併等於讓兩個不同計畫書變成一個，而 fail-closed 的代價只是一次人工確認。
 
@@ -275,6 +278,7 @@ Trial（在 trials-index.json 內）
   latestAmbiguous        latestCohortCount > 1 且呈現欄位（依 §6.4.2 比較鍵）有衝突時為 true
   conflictFields[]       衝突的呈現欄位名（**全部 13 個**呈現欄位皆可入列），依 canonical 欄位順序
   displayFields          見 §6.4.5。**只含 9 個卡片欄位，不含 4 個長文字欄位**
+  facetKeys              {欄位名: 分組鍵}，**稀疏**：只在 facetNormalize(typed) ≠ typed 時出現，全無則省略（v0.10，§9.3.5）
   searchShortLatest      見 §9.3.4
   shard                  shardKey
 ```
@@ -465,7 +469,7 @@ canonical query string：**只輸出非預設值的參數，依本表順序排�
 | `protocol` | raw protocol | 無 | 別名；以 **`identityNormalize` 後**比對，命中後 client-side 導向 canonical `?trial=`；`protocolNonIdentifier` 的值不接受 |
 | `phase` | 多值 | 無 | 同維度多選 |
 | `scale` | 多值 | 無 | 同維度多選 |
-| `applicant` | 多值 | 無 | 值為 raw 申請者字串 |
+| `applicant` | 多值 | 無 | 值為 facet 分組鍵（§9.3.5，v0.10 前為 raw 申請者字串） |
 | `enroll` | bucket id 多值 | 無 | 見 §8.4 |
 | `period` | `YYYY-MM-DD..YYYY-MM-DD` | 無 | 試驗預計執行期間 |
 | `updated` | `YYYY-MM-DD..YYYY-MM-DD` | 無 | 資料更新時間 |
@@ -504,7 +508,7 @@ canonical query string：**只輸出非預設值的參數，依本表順序排�
 |---|---|---|
 | `phase` | §6.6.1 的 7 個合法值 | `categoricalUnprovided`／`categoricalUnknown` → 未提供；衝突 → 不一致 |
 | `scale` | §6.6.1 的 3 個合法值 | 同上 |
-| `applicant` | raw 申請者字串 | 空 → 未提供；衝突 → 不一致 |
+| `applicant` | `facetNormalize(typed)`（§9.3.5）；卡片仍顯示 raw | 空 → 未提供；衝突 → 不一致 |
 | `enroll` | `台灣預計受試者人數` bucket：`0`（等於 0）、`1-10`、`11-30`、`31-100`、`101-`；**閉區間** | 見下 |
 | `period` | `試驗預計執行期間起` ≤ 區間末 且 `迄` ≥ 區間首（**重疊**語意） | 任一端 typed `null` → 未提供 |
 | `updated` | `latestSourceDate` 落於閉區間內 | `dateUnknown` → 未提供 |
@@ -756,6 +760,10 @@ v0.6 曾寫成「E2 的統計卡 oracle 以本清單為唯一來源」，那會�
 
 每個 facet 的 `buckets` 計數 + `unprovided` + `conflicted` **必須等於** `denominators.trials`。
 
+**bucket 的分組鍵（v0.10）**：`applicant` 以 `facetNormalize(typed)` 分組，`phase`／`scale` 以 typed 分組（它們是 §6.6.1 的合法值常數，NFKC 會把 `Phase Ⅱ` 折成 `Phase II`）。鍵 ≠ typed 的 Trial 在 index 帶 `facetKeys`（§6.4.4），**前端以它比對，不自行重做正規化**——Python 與 JS 的空白類別與 NFKC 版本不保證一致，兩邊各算一次就是兩份契約。
+
+v0.9 以 raw typed 分組，實測（2026-10-22，370 bucket）7 組同一申請者只差尾隨空白／`\t`／`\r\n`／CJK 相容字（U+F9B3）而被拆開，124 個 Trial 落在旁支；最大一組勾主選項只回 162/278（漏 42%），統計卡卻照算——**數字與結果對不上而無任何提示**。卡片與詳情頁仍顯示 raw。
+
 **`stats.json` 與 `trials-index` 的一致性**：每個 facet 的 bucket 計數必須等於依 `trials-index` 的 `displayFields`／`conflictFields` 重新計算的結果。這是 §9.3.6 的不變量之一（見下），否則一份 bucket 計數全錯但總和恰好正確的 `stats.json` 會通過所有其他檢查。
 
 **搜尋索引檔**：`{ "datasetVersion", "fields": [...], "records": [ { "r": "<recordId>", "t": "<trialId>", "d": "YYYY-MM-DD | null", "f": ["<正規化文字>"] } ] }`。`f` 順序對應 `fields`。`d` 為 `null` 表示該 record 無可採計日期（供 §7.2 標示「資料日期不明」）。
@@ -796,7 +804,7 @@ v0.6 曾寫成「E2 的統計卡 oracle 以本清單為唯一來源」，那會�
 | I3 | **referential integrity** | 每個 `recordId` 存在於 `trial.shard` 指定的 shard；每個 record 被**恰好一個** Trial 引用**一次**（同一 Trial 內重複引用亦違規）；**shard 內不得有零 Trial 引用的 record**；`latestCohort ⊆ recordIds` | `trials-index` 與相關 shard 可讀 |
 | I4 | **計數一致** | `trial.recordCount` == 該 shard 內 `trials[trialId].recordIds` 長度；`trial.latestCohortCount` == `latestCohort` 長度。**（方案 B 的必要防漂移條件。）** | 同 I3 |
 | I5 | **排序 total order** | `trials` 依 `trialId` 昇序；`recordIds` 依（可採計日期降序、不可採計者置末、`recordId` 昇序）；`latestCohort` 依 `recordId` 昇序 | `trials` 的順序無前置；**某 Trial 的 `recordIds` 排序只在該 Trial 通過 I3 時評估**（否則取不到排序鍵） |
-| I6 | **stats 一致性** | 每個 facet 的 bucket 計數 == 依 `trials-index` 重算的結果；且 `buckets + unprovided + conflicted` == `denominators.trials`（§9.3.5） | `trials-index` 與 `stats.json` 可讀。**不依賴 I3／I4／I5** |
+| I6 | **stats 一致性** | 每個 facet 的 bucket 計數 == 依 `trials-index` 重算的結果（**分組鍵由 typed 獨立重算，不讀 `facetKeys`**）；且 `buckets + unprovided + conflicted` == `denominators.trials`（§9.3.5）；`facetKeys` == 重算鍵、鍵 == typed 時不得出現、衝突或未提供者不得帶（v0.10） | `trials-index` 與 `stats.json` 可讀。**不依賴 I3／I4／I5** |
 | I7 | **`datasetVersion`／`artifactDigest`** | 依 §9.3.2 可重算且與 manifest 所載相符 | `manifest.files` 列出的檔案全部可讀。**不依賴 I3～I6** |
 | I8 | **大小 metadata 可重算**（v0.9 新增） | 每個 `manifest.files` 條目的 `bytes` == 該檔實際位元組長度；`gzipBytes` == 對該位元組的 gzip 長度；五個具名 top-level entry 的 `brotliBytes` == 對該位元組的 brotli **quality 11** 長度；`recordShards` 條目**不得**有 `brotliBytes` | 該檔可讀。**不依賴 I1～I7** |
 
@@ -1119,6 +1127,14 @@ fixture 為**凍結**資料，不從活資料抽樣；凍結時母體不可縮�
 | 14 | **F1 的 1.5 MB 量的是全部 network responses**，三個資料檔只是須恰好相等的子集合 | §11 F1 | r4 2.2／F1，使用者定案 |
 
 ## 15. 修訂紀錄
+
+- **v0.10（2026-10-22）** 由 code review（`_reviews/2026-10-22` #2）觸發，**只改 applicant facet 的分組鍵**：
+  - **§6.0 新增 `facetNormalize`**，§8.4／§9.3.5 的 applicant 改以它分組；§7.4 URL 的 `applicant` 值隨之改為分組鍵
+  - **§6.4.4 新增稀疏 `facetKeys`**，ETL 算、前端讀，不在兩種 runtime 各自正規化
+  - **I6 擴充**：分組鍵由 typed 獨立重算（讀 `facetKeys` 等於讓 index 自證），並與 `facetKeys` 對帳
+  - **schemaVersion 2 → 3**：bucket 值的語意變了。v2 前端以 typed 比對 v3 bucket，旁支 Trial 會從結果消失而統計卡照算
+  - **已知未涵蓋**：舊分享連結若帶旁支 raw 值（如尾隨 `\t`），在 v3 不對應任何 bucket——與 review #3「URL 值不在 facet」同一路徑，在那裡一併處理
+  - **教訓**：v0.9 的 I6 與 E2 都驗「計數閉合、multiset 相等」，那些在拆錯 bucket 時仍成立——規格 §9.3.5 自己寫過「三類總和閉合不構成分類正確性的證據」，但分類的**鍵**本身沒有被質疑過
 
 - **v0.9（2026-09-21）** 第五輪 `/codex-checkplan` **只審 v0.8 的修訂本身**（接受 35／部分接受 4／拒絕 0，範圍蔓延 0）。**39 項發現沒有一項是幻覺，也沒有一項是 v0.7 遺留——全部是 v0.8 修訂自己造的**，第五次應驗「修訂會製造新洞」。另有 4 處（`plan-verdict-r5.md` 的 S1–S4）是送審前自查修掉的，形狀一致：**最容易漏的是「同一個數字寫在兩個地方」**。主要變更：
   - **Blocker：`brotliBytes` 降為建置期 q11 估算值，F1 的唯一 oracle 改為部署端實際 response 的實收位元組。** v0.8 犯的正是它自己要修的錯——它把 F1 從 gzip 改成 brotli，理由寫「量一個使用者從來不會付的數字就是自我誤導」，然後把 q11 建置值交給 UI 當實際下載大小。Cloudflare 動態壓縮約 q4–q5，**比 q11 大**。連帶把 Tier 0 的 924.0 KiB 降級為估算值，F1 的通過與否要等 M2 對真實部署量過才算數

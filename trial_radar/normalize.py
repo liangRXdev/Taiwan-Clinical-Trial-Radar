@@ -47,6 +47,23 @@ def search_normalize(s: str | None) -> str:
     return _WHITESPACE.sub(" ", nfkc((s or "").strip()).casefold())
 
 
+def facet_normalize(s: str | None) -> str:
+    """`nfkc(s)` → 內部連續空白壓為單一空格 → `strip`（§6.0）。**只用於 applicant facet 的分組鍵**。
+
+    與 `search_normalize` 差在**不做 casefold**：facet 鍵會原樣顯示為篩選選項與統計卡
+    標籤，而實測（2026-10-22，370 bucket）casefold 不多合併任何一組。
+
+    為什麼需要：applicant 原本以 raw typed 分 bucket，只差尾隨空白／`	`／`
+`／
+    CJK 相容字（U+F9B3）的同一申請者被拆成多個 bucket——實測 7 組、124 個 Trial
+    落在旁支，最大一組勾主選項會漏掉 116/278（42%）。
+
+    `nfkc` 放在 strip **之前**：NFKC 會把某些非空白字元展開出空白（如 U+00A8 `¨` →
+    U+0020 U+0308），先 strip 再 NFKC 可能留下前後空白。
+    """
+    return _WHITESPACE.sub(" ", nfkc(s)).strip()
+
+
 def has_ascii_alnum(s: str | None) -> bool:
     """§6.2.2：protocol 是否含任何 ASCII 英數字元。等價於 `loose_key(s) != ""`。"""
     return loose_key(s) != ""

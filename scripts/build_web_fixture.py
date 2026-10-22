@@ -147,12 +147,34 @@ def _conflict_rows(rows: list[dict]) -> list[dict]:
     return out
 
 
+#: 申請者 facet 的空白變體（schemaVersion 3）。**兩個不同 Trial**、申請者只差尾隨 `\t`：
+#: v2 把它們拆成兩個 bucket，勾其中一個就漏另一個（實資料最大一組漏 42%）。
+APPLICANT_WS_BASE = "測試丙藥廠股份有限公司"
+APPLICANT_WS_VARIANTS = (APPLICANT_WS_BASE, APPLICANT_WS_BASE + " \t")
+
+
+def _applicant_variant_rows(rows: list[dict]) -> list[dict]:
+    """各產一列、protocol 不同的衍生資料，驗前端以 `facetKeys` 合併 bucket。"""
+    donor = next(r for r in rows if r[PROTOCOL] == "BIG-001")
+    out: list[dict] = []
+    for n, applicant in enumerate(APPLICANT_WS_VARIANTS, start=1):
+        row = dict(donor)
+        row[PROTOCOL] = f"APPL-WS-{n:02d}"
+        row["TFDA收文號"] = f"WEB-FIXTURE-AW{n:02d}"
+        row["臨床試驗申請者"] = applicant
+        out.append(row)
+    return out
+
+
 def build() -> tuple[dict[str, bytes], dict]:
     import datetime
 
     rows_path = ROOT / "tests" / "fixtures" / "a_core" / "rows.json"
     rows = list(json.loads(rows_path.read_text(encoding="utf-8"))["rows"].values())
-    derived = _whitespace_variant(rows) + _canary_row(rows) + _conflict_rows(rows)
+    derived = (
+        _whitespace_variant(rows) + _canary_row(rows) + _conflict_rows(rows)
+        + _applicant_variant_rows(rows)
+    )
     trials = build_trials(rows + derived, datetime.date(2026, 9, 18))
     out = build_artifacts(trials, **BUILD_KW)
     return out.published, out.manifest
