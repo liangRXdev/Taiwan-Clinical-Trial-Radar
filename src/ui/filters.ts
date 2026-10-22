@@ -20,7 +20,7 @@ import {
 } from "../lib/filter.js";
 import type { Facet, Stats } from "../lib/types.js";
 import { el } from "./dom.js";
-import { FILTER_SPECIAL } from "./text.js";
+import { FILTER_SPECIAL, LABEL } from "./text.js";
 
 /** 超過這個數量才顯示 type-ahead 過濾框。phase(7)／scale(3) 用不到。 */
 export const TYPEAHEAD_THRESHOLD = 12;
@@ -172,8 +172,13 @@ export function renderFilters(opts: FilterPanelOptions): HTMLElement {
       continue;
     }
 
-    const options =
+    const known =
       dim === "enroll" ? enrollOptions() : facetOptions(stats.facets[dim]!);
+    // §7.4：URL 帶入、但不在值域內的已選值仍要畫出來（已勾選），否則它在生效卻無處取消
+    const unknown: FilterOption[] = state[dim]
+      .filter((v) => !known.some((o) => o.value === v))
+      .map((v) => ({ value: v, label: `${v}${LABEL.filterValueUnknownTag}`, count: null }));
+    const options = [...unknown, ...known];
     const list = optionList(dim, options, state[dim], callbacks);
     list.id = `f-${dim}-options`;
 

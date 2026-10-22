@@ -63,6 +63,8 @@ const ALLOWED_STATE_CONCEPTS = [
   // §7.4／E8：`?protocol=` 的兩種拒絕，**刻意分開**
   "查詢值不是計畫書編號",
   "本站沒有該計畫書編號",
+  // §7.4：篩選值不在目前值域（review #3）。與「本站沒有該計畫書編號」分開：這裡講的是選項，不是試驗
+  "篩選值不在目前資料的選項中",
   // §6.6：欄位級的解析結果
   "來源未提供",
   "來源值不在已知清單內",
@@ -134,6 +136,8 @@ const CONCEPT_OF: Record<string, Concept> = {
   "LABEL.undatedRecords": "資料日期不明的紀錄",
   "LABEL.protocolRejected": "查詢值不是計畫書編號",
   "LABEL.protocolNotFound": "本站沒有該計畫書編號",
+  "LABEL.filterValueUnknown": "篩選值不在目前資料的選項中",
+  "LABEL.filterValueUnknownTag": "篩選值不在目前資料的選項中",
   "FILTER_SPECIAL.unprovided": "來源未提供",
   "FILTER_SPECIAL.conflicted": "同日多筆資料不一致",
   "FIELD_NOTE.categoricalUnprovided": "來源未提供",
@@ -272,6 +276,27 @@ describe("E1：狀態概念封閉清單", () => {
 });
 
 // ─────────────────────────────────────────────────────────────── E4
+
+describe("§7.4：不在值域內的已選值仍畫成已勾選、可取消（review #3）", () => {
+  it("未知申請者值出現在面板最上方、已勾選、標示不在資料中；取消即回報 onToggle(false)", () => {
+    const calls: Array<[string, string, boolean]> = [];
+    const panel = renderFilters({
+      stats,
+      state: { phase: [], scale: [], applicant: ["<i>不存在的申請者"], enroll: [], period: null, updated: null },
+      errors: new Map(),
+      callbacks: { onToggle: (d, v, c) => calls.push([d, v, c]), onRange: () => {} },
+    });
+    const first = panel.querySelector<HTMLElement>('[data-dim="applicant"] .filter__option')!;
+    expect(first.dataset.value).toBe("<i>不存在的申請者");
+    expect(first.textContent).toContain("（不在目前資料中）");
+    expect(first.querySelector("i")).toBeNull(); // 來源以外的 URL 值同樣以文字呈現
+    const box = first.querySelector<HTMLInputElement>("input")!;
+    expect(box.checked).toBe(true);
+    box.checked = false;
+    box.dispatchEvent(new Event("change"));
+    expect(calls).toEqual([["applicant", "<i>不存在的申請者", false]]);
+  });
+});
 
 describe("D9／E4：NFKC 才形成的標記字元與原文呈現（r6 R6-11）", () => {
   it("U+FE64／U+FE65 經 NFKC 成 < > 後，篩選選項仍以文字呈現", () => {

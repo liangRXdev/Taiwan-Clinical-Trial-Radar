@@ -334,3 +334,32 @@ test.describe("D9：只差空白的申請者在真實頁面上同屬一個選項
     expect(await trialIds(page)).toEqual(ids);
   });
 });
+
+test.describe("§7.4：URL 帶入不在值域內的篩選值（review #3）", () => {
+  // 舊分享連結形狀：v0.10 前旁支申請者寫法（尾隨 TAB）在 v3 已不是任何選項
+  const LEGACY = "測試丙藥廠股份有限公司 \t";
+
+  test("有明確訊息、選項已勾選可取消；取消後 URL 乾淨、結果回到全部", async ({ page }) => {
+    await page.goto(`/?applicant=${encodeURIComponent(LEGACY)}`);
+    await expect(page.locator("main .alert--error")).toContainText("不在目前資料的選項中");
+    expect(await trialIds(page)).toHaveLength(0);
+
+    const option = page.locator(`[data-dim="applicant"] .filter__option[data-value="${LEGACY}"]`);
+    await expect(option).toContainText("（不在目前資料中）");
+    const box = option.locator("input");
+    await expect(box).toBeChecked();
+
+    await box.click(); // 不用 uncheck()：取消後整個面板重繪，uncheck 會等不到原元素穩定
+    await page.waitForFunction(() => !location.search.includes("applicant="));
+    await expect(page.locator("main .alert--error")).toHaveCount(0);
+    await expect(page.locator(".result-count")).toContainText(String(FIXTURE_TRIALS)); // 卡片有分頁，數量看結果數文字
+  });
+
+  test("有效值＋失效值並存：失效值仍顯示訊息，不被有效值的結果蓋過", async ({ page }) => {
+    const base = "測試丙藥廠股份有限公司";
+    await page.goto(`/?applicant=${encodeURIComponent(base)}&applicant=${encodeURIComponent("不存在的申請者")}`);
+    await expect(page.locator("main .alert--error")).toContainText("不存在的申請者");
+    // 同維度 OR：有效值那組照常回傳
+    expect(await trialIds(page)).toHaveLength(3);
+  });
+});

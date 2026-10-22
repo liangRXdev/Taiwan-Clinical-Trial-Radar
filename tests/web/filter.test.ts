@@ -19,6 +19,7 @@ import {
   parseDateRange,
   periodCategoryOf,
   UNPROVIDED,
+  unknownChoiceValues,
   updatedCategoryOf,
 } from "../../src/lib/filter.js";
 import { byProtocol, stats, trials } from "./fixture.js";
@@ -276,5 +277,32 @@ describe("D9 applicant facet：只差空白的申請者同屬一個選項（sche
     for (const t of trials) {
       for (const k of Object.keys(t.facetKeys ?? {})) expect(k).toBe(field);
     }
+  });
+});
+
+describe("§7.4 不在值域內的篩選值（review #3）", () => {
+  const facetValues = {
+    phase: stats.facets.phase!.buckets.map((b) => b.value),
+    scale: stats.facets.scale!.buckets.map((b) => b.value),
+    applicant: stats.facets.applicant!.buckets.map((b) => b.value),
+  };
+
+  it("回報每個維度裡不在值域的值；特殊值與合法值不回報", () => {
+    const state = {
+      ...emptyFilter(),
+      applicant: [facetValues.applicant[0]!, "測試丙藥廠股份有限公司 \t", UNPROVIDED],
+      phase: ["Phase Ⅸ", CONFLICTED],
+      enroll: ["0", "999-"],
+    };
+    expect(unknownChoiceValues(state, facetValues)).toEqual([
+      { dim: "phase", value: "Phase Ⅸ" },
+      { dim: "applicant", value: "測試丙藥廠股份有限公司 \t" },
+      { dim: "enroll", value: "999-" },
+    ]);
+  });
+
+  it("條件仍然生效（不靜默丟棄）：只帶未知值時結果為 0，而不是全部", () => {
+    const state = { ...emptyFilter(), applicant: ["不存在的申請者"] };
+    expect(applyFilters(all, state)).toHaveLength(0);
   });
 });
