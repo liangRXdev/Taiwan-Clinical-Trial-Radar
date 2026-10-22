@@ -121,6 +121,34 @@ export function enrollBucketsOf(trial: Trial): string[] {
   return hits.length > 0 ? hits : [UNPROVIDED];
 }
 
+/** 多值維度裡，值域取自 `stats.json` 或 `ENROLL_BUCKETS` 的那四個。 */
+export const CHOICE_DIMENSIONS = ["phase", "scale", "applicant", "enroll"] as const;
+export type ChoiceDimension = (typeof CHOICE_DIMENSIONS)[number];
+
+/**
+ * §7.4：格式合法但**不在目前值域**的篩選值（如舊分享連結裡已不存在的申請者寫法）。
+ *
+ * 這些值仍然生效（結果為 0），呼叫端必須同時顯示訊息並讓它可被取消——
+ * 只生效不顯示，使用者會把「0 個試驗」讀成「此申請者沒有試驗」，而且找不到地方取消。
+ * 特殊值（未提供／不一致）恆為合法。
+ */
+export function unknownChoiceValues(
+  state: FilterState,
+  facetValues: Readonly<Record<"phase" | "scale" | "applicant", readonly string[]>>,
+): Array<{ dim: ChoiceDimension; value: string }> {
+  const out: Array<{ dim: ChoiceDimension; value: string }> = [];
+  for (const dim of CHOICE_DIMENSIONS) {
+    const known = new Set<string>(
+      dim === "enroll" ? ENROLL_BUCKETS.map((b) => b.id) : facetValues[dim],
+    );
+    for (const value of state[dim]) {
+      if (value === UNPROVIDED || value === CONFLICTED || known.has(value)) continue;
+      out.push({ dim, value });
+    }
+  }
+  return out;
+}
+
 /** `YYYY-MM-DD..YYYY-MM-DD` → `[起, 迄]`；格式不符回傳 `null`。 */
 export function parseDateRange(v: string): [string, string] | null {
   const m = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(v);

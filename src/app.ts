@@ -7,7 +7,7 @@
  * 由兩個版本拼出來的答案，那正是本專案最怕的誤導。
  */
 
-import { applyFilters, DIMENSIONS, parseDateRange, type Dimension } from "./lib/filter.js";
+import { applyFilters, DIMENSIONS, parseDateRange, unknownChoiceValues, type Dimension } from "./lib/filter.js";
 import {
   browseAll,
   mergeHits,
@@ -25,7 +25,7 @@ import { renderCard } from "./ui/card.js";
 import { renderDetail } from "./ui/detail.js";
 import { renderDisclaimer } from "./ui/disclaimer.js";
 import { el, mount } from "./ui/dom.js";
-import { renderFilters } from "./ui/filters.js";
+import { DIMENSION_TITLES, renderFilters } from "./ui/filters.js";
 import { renderMeta } from "./ui/meta.js";
 import { renderScopeBar, renderZeroResultHint } from "./ui/scopeBar.js";
 import { renderStats } from "./ui/stats.js";
@@ -210,6 +210,15 @@ export class App {
       if (v !== null && parseDateRange(v) === null) {
         this.errors.set(dim, `${dim} 須為 YYYY-MM-DD..YYYY-MM-DD 且起不晚於迄`);
       }
+    }
+    // §7.4：不在值域內的值是無效值——條件照舊生效（不靜默丟棄），但必須說明為何是 0
+    const facetValues = {
+      phase: this.stats.facets.phase!.buckets.map((b) => b.value),
+      scale: this.stats.facets.scale!.buckets.map((b) => b.value),
+      applicant: this.stats.facets.applicant!.buckets.map((b) => b.value),
+    };
+    for (const { dim, value } of unknownChoiceValues(this.state.filters, facetValues)) {
+      this.errors.set(`${dim}:${value}`, LABEL.filterValueUnknown(DIMENSION_TITLES[dim], value));
     }
   }
 
