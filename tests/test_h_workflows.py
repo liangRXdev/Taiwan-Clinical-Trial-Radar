@@ -279,6 +279,77 @@ def test_部署只在上游成功時執行():
     assert "workflow_run.conclusion == 'success'" in cond, cond
 
 
+def _eval_deploy_if(cond: str, ctx: dict) -> bool:
+    """把 deploy 的 `if` 運算式翻成 Python 求值。
+
+    只支援本運算式用到的語法（`==`、`&&`、`||`、括號、`contains(fromJSON('[...]'), x)`），
+    遇到不認得的 token 直接失敗——**不認得就不放行**，避免日後改寫 `if` 時本測試靜默變綠。
+    """
+    expr = re.sub(
+        r"contains\(fromJSON\('(\[[^\]]*\])'\),\s*([\w.]+)\)",
+        lambda m: f"({m.group(2)} in {m.group(1)})",
+        cond,
+    )
+    expr = expr.replace("&&", " and ").replace("||", " or ")
+
+    def lookup(m: re.Match) -> str:
+        node = ctx
+        for part in m.group(0).split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+        return repr(node)
+
+    expr = re.sub(r"\bgithub(?:\.[A-Za-z_]+)+", lookup, expr)
+    leftover = re.sub(r"'[^']*'|\"[^\"]*\"|\b(?:and|or|in|None)\b|==|[()\[\],\s]", "", expr)
+    assert not leftover, f"未支援的語法：{leftover!r}"
+    return bool(eval(expr, {"__builtins__": {}}, {}))  # noqa: S307 — 輸入是本 repo 的 YAML
+
+
+REPO = "owner/Taiwan-Clinical-Trial-Radar"
+
+
+def _run_ctx(*, name: str, event: str, head_repo: str, conclusion: str = "success") -> dict:
+    return {
+        "github": {
+            "event_name": "workflow_run",
+            "repository": REPO,
+            "event": {
+                "workflow_run": {
+                    "name": name,
+                    "event": event,
+                    "conclusion": conclusion,
+                    "head_repository": {"full_name": head_repo},
+                }
+            },
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("case", "ctx", "expected"),
+    [
+        ("CI push 到本 repo main", _run_ctx(name="CI", event="push", head_repo=REPO), True),
+        ("月更新排程", _run_ctx(name="月更新資料", event="schedule", head_repo=REPO), True),
+        ("月更新手動", _run_ctx(name="月更新資料", event="workflow_dispatch", head_repo=REPO), True),
+        ("CI 手動", _run_ctx(name="CI", event="workflow_dispatch", head_repo=REPO), True),
+        ("直接手動部署", {"github": {"event_name": "workflow_dispatch", "repository": REPO}}, True),
+        # pwn-request：fork 從自己的 main 開 PR，head_branch 同為 main、CI 綠
+        ("fork PR（head_branch=main）", _run_ctx(name="CI", event="pull_request", head_repo="attacker/fork"), False),
+        ("fork 但事件被偽裝成 push", _run_ctx(name="CI", event="push", head_repo="attacker/fork"), False),
+        ("本 repo 的 PR", _run_ctx(name="CI", event="pull_request", head_repo=REPO), False),
+        ("pull_request_target", _run_ctx(name="CI", event="pull_request_target", head_repo=REPO), False),
+        ("上游失敗", _run_ctx(name="CI", event="push", head_repo=REPO, conclusion="failure"), False),
+    ],
+)
+def test_部署不得被_fork_或_pr_觸發(case: str, ctx: dict, expected: bool):
+    """`workflow_run.branches` 篩的是 head_branch，擋不住 fork 自己的 main（pwn-request）。
+
+    2026-10-22 code review 發現：原本的 `if` 只看 conclusion，fork PR CI 綠即會以
+    production secrets 部署 fork 的程式碼。本測試以**行為**驗收，不只比對子字串。
+    """
+    cond = load(DEPLOY)["jobs"]["deploy"]["if"]
+    assert _eval_deploy_if(cond, ctx) is expected, case
+
+
 def test_部署自己跑一次_payload_gate():
     """資料更新的 commit 沒跑過 CI，這是它唯一的 payload 檢查。"""
     runs = [s.get("run", "") for s in load(DEPLOY)["jobs"]["deploy"]["steps"]]
